@@ -24,3 +24,10 @@ class EntryRead(BaseModel):
     email: str | None = None
     referrer: str | None = None
     created_at: datetime
+
+
+class PaginatedEntries(BaseModel):
+    items: list[EntryRead]
+    total: int
+    skip: int = 0
+    limit: int = 50

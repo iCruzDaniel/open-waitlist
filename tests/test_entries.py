@@ -1,4 +1,4 @@
-"""Tests for entry creation endpoint (Fase 5)."""
+"""Tests for entry creation endpoint (Fase 5) and listing/CSV (Fase 6)."""
 
 import pytest
 from httpx import AsyncClient
@@ -137,3 +137,121 @@ async def test_add_entry_entry_count_increments(client: AsyncClient) -> None:
     wl_resp = await client.get("/waitlists/count-test", headers=headers)
     assert wl_resp.status_code == 200
     assert wl_resp.json()["entry_count"] == 3
+
+
+@pytest.mark.anyio
+async def test_list_entries_paginated(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    await client.post(
+        "/waitlists",
+        json={"slug": "list-paginated", "title": "List Test"},
+        headers=headers,
+    )
+    for i in range(5):
+        await client.post(
+            "/waitlists/list-paginated/entries",
+            json={"data": {"seq": i}},
+            headers=headers,
+        )
+
+    # First page: 2 items
+    page1 = await client.get(
+        "/waitlists/list-paginated/entries?skip=0&limit=2",
+        headers=headers,
+    )
+    assert page1.status_code == 200
+    data1 = page1.json()
+    assert len(data1["items"]) == 2
+    assert data1["total"] == 5
+    assert data1["skip"] == 0
+    assert data1["limit"] == 2
+
+    page2 = await client.get(
+        "/waitlists/list-paginated/entries?skip=2&limit=2",
+        headers=headers,
+    )
+    assert page2.status_code == 200
+    assert len(page2.json()["items"]) == 2
+    assert page2.json()["total"] == 5
+
+    page3 = await client.get(
+        "/waitlists/list-paginated/entries?skip=4&limit=2",
+        headers=headers,
+    )
+    assert page3.status_code == 200
+    assert len(page3.json()["items"]) == 1
+
+
+@pytest.mark.anyio
+async def test_list_entries_empty_waitlist(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    await client.post(
+        "/waitlists",
+        json={"slug": "empty-list", "title": "Empty"},
+        headers=headers,
+    )
+    resp = await client.get("/waitlists/empty-list/entries", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.anyio
+async def test_list_entries_nonexistent_waitlist(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    resp = await client.get(
+        "/waitlists/no-such-list/entries",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.anyio
+async def test_export_csv(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    await client.post(
+        "/waitlists",
+        json={"slug": "csv-export", "title": "CSV Export"},
+        headers=headers,
+    )
+    await client.post(
+        "/waitlists/csv-export/entries",
+        json={"data": {"email": "a@b.com", "name": "Alice"}},
+        headers=headers,
+    )
+    await client.post(
+        "/waitlists/csv-export/entries",
+        json={"data": {"email": "b@b.com", "name": "Bob"}},
+        headers=headers,
+    )
+
+    resp = await client.get(
+        "/waitlists/csv-export/entries/csv",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "csv-export-entries.csv" in resp.headers.get("content-disposition", "")
+
+    body = resp.text
+    assert "email" in body
+    assert "a@b.com" in body
+    assert "b@b.com" in body
+
+
+@pytest.mark.anyio
+async def test_export_csv_empty_waitlist(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    await client.post(
+        "/waitlists",
+        json={"slug": "empty-csv", "title": "Empty CSV"},
+        headers=headers,
+    )
+    resp = await client.get(
+        "/waitlists/empty-csv/entries/csv",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert "id,email" in resp.text

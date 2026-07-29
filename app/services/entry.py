@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entry import Entry
@@ -49,3 +49,33 @@ async def create_entry(
     await session.commit()
     await session.refresh(entry)
     return entry
+
+
+async def list_entries(
+    session: AsyncSession,
+    slug: str,
+    *,
+    skip: int = 0,
+    limit: int = 50,
+) -> tuple[list[Entry], int]:
+    """List entries for a waitlist with pagination. Returns (items, total)."""
+    result = await session.execute(
+        select(Waitlist.id).where(Waitlist.slug == slug)
+    )
+    wl_id = result.scalar_one_or_none()
+    if wl_id is None:
+        return [], 0
+
+    count_q = select(func.count(Entry.id)).where(Entry.waitlist_id == wl_id)
+    total = (await session.execute(count_q)).scalar_one()
+
+    query = (
+        select(Entry)
+        .where(Entry.waitlist_id == wl_id)
+        .order_by(Entry.created_at.desc())
+        .offset(skip)
+    )
+    if limit > 0:
+        query = query.limit(limit)
+    result = await session.execute(query)
+    return list(result.scalars().all()), total
