@@ -228,7 +228,7 @@ async def test_export_csv(client: AsyncClient) -> None:
     )
 
     resp = await client.get(
-        "/waitlists/csv-export/entries/csv",
+        "/waitlists/csv-export/entries/export",
         headers=headers,
     )
     assert resp.status_code == 200
@@ -250,7 +250,7 @@ async def test_export_csv_empty_waitlist(client: AsyncClient) -> None:
         headers=headers,
     )
     resp = await client.get(
-        "/waitlists/empty-csv/entries/csv",
+        "/waitlists/empty-csv/entries/export",
         headers=headers,
     )
     assert resp.status_code == 200

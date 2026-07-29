@@ -63,7 +63,7 @@ async def list_all(
     )
 
 
-@router.get("/csv")
+@router.get("/export")
 async def export_csv(
     slug: str,
     session: AsyncSession = Depends(get_session),  # noqa: B008

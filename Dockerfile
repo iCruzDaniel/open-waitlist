@@ -60,10 +60,17 @@ FROM python:3.12-slim
 # Create non-root user
 RUN groupadd -r openwaitlist && useradd -r -g openwaitlist -d /app -s /sbin/nologin openwaitlist
 
+# Install gosu for step-down from root in entrypoint
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy virtual environment from builder
 COPY --from=builder /build/.venv/ ./.venv/
+
+# Fix shebangs: uv hardcodes the build-time venv path in scripts
+RUN sed -i 's|/build/.venv/|/app/.venv/|g' ./.venv/bin/*
 
 # Copy application source
 COPY --from=builder /build/app/ ./app/
@@ -81,6 +88,16 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 EXPOSE 8000
 
-USER openwaitlist
+# Entrypoint: run migrations, ensure /app/data is writable, drop privileges
+COPY <<"EOF" /entrypoint.sh
+#!/bin/bash
+set -e
+mkdir -p /app/data
+chown openwaitlist:openwaitlist /app/data
+gosu openwaitlist alembic upgrade head
+exec gosu openwaitlist "$@"
+EOF
+RUN chmod +x /entrypoint.sh
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

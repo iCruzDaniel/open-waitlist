@@ -67,7 +67,7 @@ async def create(
     return _waitlist_to_read(wl)
 
 
-@router.put("/{slug}", response_model=WaitlistRead)
+@router.patch("/{slug}", response_model=WaitlistRead)
 async def update(
     slug: str,
     payload: WaitlistUpdate,

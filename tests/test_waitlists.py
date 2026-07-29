@@ -81,7 +81,7 @@ async def test_update_waitlist(client: AsyncClient) -> None:
         json={"slug": "update-me", "title": "Original"},
         headers=headers,
     )
-    response = await client.put(
+    response = await client.patch(
         "/waitlists/update-me",
         json={"title": "Updated Title", "description": "New desc"},
         headers=headers,
@@ -141,7 +141,7 @@ async def test_create_invalid_slug(client: AsyncClient) -> None:
 @pytest.mark.anyio
 async def test_update_non_existent_waitlist(client: AsyncClient) -> None:
     headers = {"X-API-Key": get_settings().api_key}
-    resp = await client.put(
+    resp = await client.patch(
         "/waitlists/no-such-list",
         json={"title": "Nope"},
         headers=headers,
@@ -164,7 +164,7 @@ async def test_update_waitlist_empty_body(client: AsyncClient) -> None:
         json={"slug": "no-change", "title": "Original"},
         headers=headers,
     )
-    resp = await client.put(
+    resp = await client.patch(
         "/waitlists/no-change",
         json={},
         headers=headers,
