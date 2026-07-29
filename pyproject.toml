@@ -20,7 +20,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7,<2",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8.0,<9",
     "pytest-asyncio>=0.24,<1",
