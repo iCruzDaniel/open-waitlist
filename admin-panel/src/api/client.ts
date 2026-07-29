@@ -71,12 +71,14 @@ export function useAuth() {
     }
     const data: LoginResponse = await res.json()
     storeAuth(data.access_token, data.api_key)
+    api.setAuth(data.access_token, data.api_key)   // ← sync global ApiClient
     setToken(data.access_token)
     setApiKey(data.api_key)
   }, [])
 
   const logout = useCallback(() => {
     clearAuth()
+    api.setAuth(null, null)                         // ← clear global ApiClient
     setToken(null)
     setApiKey(null)
   }, [])
