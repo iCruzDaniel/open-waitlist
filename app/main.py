@@ -6,8 +6,10 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.auth.router import router as auth_router
+from app.auth.service import bootstrap_admin
 from app.config import get_settings
-from app.database import dispose_engine
+from app.database import _SessionFactory, dispose_engine
 from app.middleware.cors import configure_cors
 from app.middleware.rate_limit import limiter
 from app.middleware.security import SecurityHeadersMiddleware
@@ -15,6 +17,9 @@ from app.middleware.security import SecurityHeadersMiddleware
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Bootstrap admin user on startup
+    async with _SessionFactory() as session:
+        await bootstrap_admin(session)
     yield
     await dispose_engine()
 
@@ -39,6 +44,9 @@ def create_app() -> FastAPI:
 
     # --- Security headers ---
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # --- Routers ---
+    app.include_router(auth_router)
 
     # --- Routes ---
     @app.get("/health")
