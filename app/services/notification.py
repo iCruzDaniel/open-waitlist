@@ -1,59 +1,94 @@
-"""Background notification tasks for new entries.
-
-Notifications run as FastAPI BackgroundTasks — they never add latency to the
-response and their failure never propagates to the client.
-"""
-
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from email.mime.text import MIMEText
 
 import httpx
 
 from app.config import get_settings
-
-if TYPE_CHECKING:
-    from app.models.entry import Entry
+from app.database import _SessionFactory
+from app.models.entry import Entry
 
 logger = logging.getLogger(__name__)
 
 
-async def notify_new_entry(entry: Entry) -> None:
-    """Dispatch email notification and webhook for a new entry.
+async def notify_new_entry(entry_id: int) -> None:
+    """Dispatch email and webhook notifications for a new entry.
 
-    Both notifications are fire-and-forget. Failures are logged but never
-    raise an exception.
+    Runs as a FastAPI BackgroundTask — creates its own DB session so it's
+    fully independent of the request lifecycle. Failures are logged but
+    never propagated.
     """
-    settings = get_settings()
+    async with _SessionFactory() as session:
+        entry = await session.get(Entry, entry_id)
+        if entry is None:
+            logger.warning("notify_new_entry: entry %d not found", entry_id)
+            return
 
-    if settings.notify_email_to:
-        try:
-            await _send_email_notification(settings, entry)
-            logger.info("Email notification sent for entry %d", entry.id)
-        except Exception:
-            logger.exception("Failed to send email notification for entry %d", entry.id)
+        settings = get_settings()
 
-    if settings.webhook_url:
-        try:
-            await _send_webhook(settings, entry)
-            logger.info("Webhook sent for entry %d", entry.id)
-        except Exception:
-            logger.exception("Failed to send webhook for entry %d", entry.id)
+        if settings.notify_email_to and not entry.notified_email:
+            try:
+                await _send_email(settings, entry)
+                entry.notified_email = True
+                logger.info(
+                    "Email sent to %s for entry %d",
+                    settings.notify_email_to,
+                    entry.id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send email for entry %d", entry.id
+                )
+
+        if settings.webhook_url and not entry.notified_webhook:
+            try:
+                await _send_webhook(settings, entry)
+                entry.notified_webhook = True
+                logger.info("Webhook sent for entry %d", entry.id)
+            except Exception:
+                logger.exception(
+                    "Failed to send webhook for entry %d", entry.id
+                )
+
+        await session.commit()
 
 
-async def _send_email_notification(settings, entry: Entry) -> None:
-    """Placeholder for actual SMTP delivery.
-
-    For the MVP this logs the intention. Real SMTP integration will be added
-    when an outgoing SMTP server is configured.
-    """
-    logger.info(
-        "Would send email to %s about entry %d in waitlist %d",
-        settings.notify_email_to,
-        entry.id,
-        entry.waitlist_id,
+async def _send_email(settings, entry: Entry) -> None:
+    """Send notification email via SMTP."""
+    subject = f"New waitlist entry #{entry.id}"
+    body = (
+        f"A new entry has been submitted.\n\n"
+        f"Entry ID: {entry.id}\n"
+        f"Waitlist ID: {entry.waitlist_id}\n"
+        f"Email: {entry.email or '—'}\n"
+        f"Referrer: {entry.referrer or '—'}\n"
+        f"Data: {entry.data!s}\n"
     )
+
+    msg = MIMEText(body, _charset="utf-8")
+    msg["Subject"] = subject
+    msg["From"] = settings.smtp_from
+    msg["To"] = settings.notify_email_to
+
+    if settings.smtp_host:
+        import aiosmtplib
+
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.smtp_host,
+            port=settings.smtp_port,
+            username=settings.smtp_user or None,
+            password=settings.smtp_password or None,
+            use_tls=settings.smtp_port == 587,
+            timeout=15,
+        )
+    else:
+        logger.info(
+            "SMTP not configured — would send email to %s: %s",
+            settings.notify_email_to,
+            subject,
+        )
 
 
 async def _send_webhook(settings, entry: Entry) -> None:
