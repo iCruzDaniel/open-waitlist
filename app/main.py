@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.api.v1.entries import router as entries_router
 from app.api.v1.waitlists import router as waitlists_router
 from app.auth.router import router as auth_router
 from app.auth.service import bootstrap_admin
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     # --- Routers ---
     app.include_router(auth_router)
     app.include_router(waitlists_router)
+    app.include_router(entries_router)
 
     # --- Routes ---
     @app.get("/health")
