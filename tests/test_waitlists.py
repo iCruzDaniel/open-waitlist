@@ -131,3 +131,49 @@ async def test_unauthorized_wrong_api_key(client: AsyncClient) -> None:
         "/waitlists", headers={"X-API-Key": "wrong-key"}
     )
     assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_create_invalid_slug(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    resp = await client.post(
+        "/waitlists",
+        json={"slug": "INVALID_SLUG", "title": "Bad"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_update_non_existent_waitlist(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    resp = await client.put(
+        "/waitlists/no-such-list",
+        json={"title": "Nope"},
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_delete_non_existent_waitlist(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    resp = await client.delete("/waitlists/no-such-list", headers=headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_update_waitlist_empty_body(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    await client.post(
+        "/waitlists",
+        json={"slug": "no-change", "title": "Original"},
+        headers=headers,
+    )
+    resp = await client.put(
+        "/waitlists/no-change",
+        json={},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Original"

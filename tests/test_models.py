@@ -95,3 +95,69 @@ async def test_entry_freeform_data(session: AsyncSession) -> None:
     assert len(entries) == 4
     assert entries[0].data == {"email": "a@b.com"}
     assert entries[3].data == {"items": [1, 2, 3], "nested": {"key": "val"}}
+
+
+@pytest.mark.anyio
+async def test_waitlist_soft_delete_then_reactivate(session: AsyncSession) -> None:
+    from datetime import UTC, datetime
+
+    wl = Waitlist(slug="reactivate", title="Reactivate")
+    session.add(wl)
+    await session.commit()
+
+    wl.is_active = False
+    wl.deleted_at = datetime.now(UTC)
+    await session.commit()
+
+    result = await session.execute(
+        select(Waitlist).where(Waitlist.slug == "reactivate")
+    )
+    loaded = result.scalar_one()
+    assert loaded.is_active is False
+
+    wl.is_active = True
+    wl.deleted_at = None
+    await session.commit()
+
+    result = await session.execute(
+        select(Waitlist)
+        .where(Waitlist.slug == "reactivate")
+        .options(selectinload(Waitlist.entries))
+    )
+    reloaded = result.scalar_one()
+    assert reloaded.is_active is True
+    assert reloaded.deleted_at is None
+
+
+@pytest.mark.anyio
+async def test_entry_notification_flags_default(session: AsyncSession) -> None:
+    wl = Waitlist(slug="notif-flags", title="Notif Flags")
+    session.add(wl)
+    await session.commit()
+
+    entry = Entry(waitlist_id=wl.id, data={"email": "a@b.com"})
+    session.add(entry)
+    await session.commit()
+    await session.refresh(entry)
+
+    assert entry.notified_email is False
+    assert entry.notified_webhook is False
+
+
+@pytest.mark.anyio
+async def test_waitlist_cascade_delete_entries(session: AsyncSession) -> None:
+    wl = Waitlist(slug="cascade", title="Cascade")
+    session.add(wl)
+    await session.commit()
+
+    for i in range(3):
+        session.add(Entry(waitlist_id=wl.id, data={"n": i}))
+    await session.commit()
+
+    await session.delete(wl)
+    await session.commit()
+
+    result = await session.execute(
+        select(Entry).where(Entry.waitlist_id == wl.id)
+    )
+    assert list(result.scalars().all()) == []

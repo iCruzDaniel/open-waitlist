@@ -3,6 +3,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.config import get_settings
 from app.main import app
 
 
@@ -39,3 +40,20 @@ async def test_security_headers_on_404() -> None:
         response = await client.get("/nonexistent-route")
     assert response.status_code == 404
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.anyio
+async def test_request_body_too_large() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        large_str = "x" * 2_200_000  # >2MB raw, well over 1MB limit
+        response = await client.post(
+            "/waitlists/test/entries",
+            content=large_str,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": get_settings().api_key,
+            },
+        )
+    assert response.status_code == 413

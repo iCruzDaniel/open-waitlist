@@ -255,3 +255,61 @@ async def test_export_csv_empty_waitlist(client: AsyncClient) -> None:
     )
     assert resp.status_code == 200
     assert "id,email" in resp.text
+
+
+@pytest.mark.anyio
+async def test_add_entry_with_referrer(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    resp = await client.post(
+        "/waitlists/referrer-test/entries",
+        json={"data": {"email": "user@example.com", "referrer": "https://google.com"}},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["referrer"] == "https://google.com"
+
+
+@pytest.mark.anyio
+async def test_add_entry_email_normalized(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    resp = await client.post(
+        "/waitlists/normalize-email/entries",
+        json={"data": {"email": "  UPPER@EXAMPLE.COM  "}},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["email"] == "upper@example.com"
+
+
+@pytest.mark.anyio
+async def test_add_entry_large_data(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    large_data = {"items": list(range(500)), "text": "x" * 10_000}
+    resp = await client.post(
+        "/waitlists/large-data/entries",
+        json={"data": large_data},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert len(resp.json()["data"]["items"]) == 500
+
+
+@pytest.mark.anyio
+async def test_list_entries_default_limit(client: AsyncClient) -> None:
+    headers = {"X-API-Key": get_settings().api_key}
+    await client.post(
+        "/waitlists",
+        json={"slug": "default-limit", "title": "Default"},
+        headers=headers,
+    )
+    for i in range(5):
+        await client.post(
+            "/waitlists/default-limit/entries",
+            json={"data": {"seq": i}},
+            headers=headers,
+        )
+    resp = await client.get("/waitlists/default-limit/entries", headers=headers)
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 5
+    assert resp.json()["total"] == 5
+    assert resp.json()["limit"] == 50
