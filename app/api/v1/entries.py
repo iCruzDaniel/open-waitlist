@@ -76,13 +76,15 @@ async def export_csv(
 
     writer.writerow(["id", "email", "referrer", "created_at", "data"])
     for entry in items:
-        writer.writerow([
-            entry.id,
-            entry.email or "",
-            entry.referrer or "",
-            entry.created_at.isoformat() if entry.created_at else "",
-            _serialize_data(entry.data),
-        ])
+        writer.writerow(
+            [
+                entry.id,
+                entry.email or "",
+                entry.referrer or "",
+                entry.created_at.isoformat() if entry.created_at else "",
+                _serialize_data(entry.data),
+            ]
+        )
 
     output.seek(0)
     return StreamingResponse(

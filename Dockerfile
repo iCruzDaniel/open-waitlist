@@ -1,5 +1,26 @@
 # =============================================================================
-# Stage 1 — Builder: install dependencies
+# Stage 0 — Frontend builder (Node): compile admin panel
+# =============================================================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /build
+
+# Copy package files first for layer caching
+COPY admin-panel/package*.json ./
+RUN if [ -f package.json ]; then npm ci; else mkdir -p /tmp/dummy; fi
+
+# Copy full source and build
+COPY admin-panel/ ./
+RUN if [ -f package.json ]; then \
+        npm run build && \
+        rm -rf node_modules; \
+    else \
+        mkdir -p dist; \
+    fi
+
+
+# =============================================================================
+# Stage 1 — Python builder: install dependencies
 # =============================================================================
 FROM python:3.12-slim AS builder
 
@@ -27,14 +48,8 @@ COPY alembic.ini ./
 RUN --mount=from=ghcr.io/astral-sh/uv:0.6,source=/uv,target=/bin/uv \
     uv sync --frozen --no-dev
 
-# Pre-compile admin panel if it exists
-COPY admin-panel/ ./admin-panel/
-RUN if [ -f admin-panel/package.json ]; then \
-        cd admin-panel && \
-        npm ci && \
-        npm run build && \
-        rm -rf node_modules; \
-    fi || true
+# Copy pre-built admin panel from frontend stage
+COPY --from=frontend-builder /build/dist/ ./admin-panel/dist/
 
 
 # =============================================================================
@@ -53,8 +68,9 @@ COPY --from=builder /build/.venv/ ./.venv/
 # Copy application source
 COPY --from=builder /build/app/ ./app/
 
-# Copy admin panel static assets if built
-COPY --from=builder /build/admin-panel/dist/ ./admin-panel/dist/ 2>/dev/null || true
+# Copy admin panel static assets if built (stage 0 always produces dist/,
+# even if empty — so this COPY never fails)
+COPY --from=builder /build/admin-panel/dist/ ./admin-panel/dist/
 
 # Copy Alembic for migrations
 COPY --from=builder /build/alembic/ ./alembic/

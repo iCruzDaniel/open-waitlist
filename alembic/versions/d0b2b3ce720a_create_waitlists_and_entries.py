@@ -48,9 +48,7 @@ def upgrade() -> None:
         "entries",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("waitlist_id", sa.Integer(), nullable=False),
-        sa.Column(
-            "data", sa.JSON(), nullable=False
-        ),
+        sa.Column("data", sa.JSON(), nullable=False),
         sa.Column("email", sa.String(length=320), nullable=True),
         sa.Column("referrer", sa.String(length=1024), nullable=True),
         sa.Column("notified_email", sa.Boolean(), nullable=False),
@@ -67,14 +65,10 @@ def upgrade() -> None:
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
             nullable=True,
         ),
-        sa.ForeignKeyConstraint(
-            ["waitlist_id"], ["waitlists.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["waitlist_id"], ["waitlists.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_entries_email"), "entries", ["email"], unique=False
-    )
+    op.create_index(op.f("ix_entries_email"), "entries", ["email"], unique=False)
 
 
 def downgrade() -> None:

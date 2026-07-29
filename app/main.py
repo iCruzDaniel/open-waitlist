@@ -62,8 +62,7 @@ def create_app() -> FastAPI:
             app.mount("/admin", StaticFiles(directory=str(admin_dist), html=True), name="admin")
         else:
             logger.warning(
-                "Admin panel enabled but dist/ not found — "
-                "run 'npm run build' in admin-panel/",
+                "Admin panel enabled but dist/ not found — run 'npm run build' in admin-panel/",
             )
 
     # --- Request body size limit ---

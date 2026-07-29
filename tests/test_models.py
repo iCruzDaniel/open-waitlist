@@ -64,9 +64,7 @@ async def test_waitlist_entries_relationship(session: AsyncSession) -> None:
     await session.commit()
 
     result = await session.execute(
-        select(Waitlist)
-        .where(Waitlist.slug == "rel-test")
-        .options(selectinload(Waitlist.entries))
+        select(Waitlist).where(Waitlist.slug == "rel-test").options(selectinload(Waitlist.entries))
     )
     loaded = result.scalar_one()
     assert len(loaded.entries) == 3
@@ -88,9 +86,7 @@ async def test_entry_freeform_data(session: AsyncSession) -> None:
         session.add(Entry(waitlist_id=wl.id, data=data))
     await session.commit()
 
-    result = await session.execute(
-        select(Entry).where(Entry.waitlist_id == wl.id)
-    )
+    result = await session.execute(select(Entry).where(Entry.waitlist_id == wl.id))
     entries = list(result.scalars().all())
     assert len(entries) == 4
     assert entries[0].data == {"email": "a@b.com"}
@@ -109,9 +105,7 @@ async def test_waitlist_soft_delete_then_reactivate(session: AsyncSession) -> No
     wl.deleted_at = datetime.now(UTC)
     await session.commit()
 
-    result = await session.execute(
-        select(Waitlist).where(Waitlist.slug == "reactivate")
-    )
+    result = await session.execute(select(Waitlist).where(Waitlist.slug == "reactivate"))
     loaded = result.scalar_one()
     assert loaded.is_active is False
 
@@ -157,7 +151,5 @@ async def test_waitlist_cascade_delete_entries(session: AsyncSession) -> None:
     await session.delete(wl)
     await session.commit()
 
-    result = await session.execute(
-        select(Entry).where(Entry.waitlist_id == wl.id)
-    )
+    result = await session.execute(select(Entry).where(Entry.waitlist_id == wl.id))
     assert list(result.scalars().all()) == []

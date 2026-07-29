@@ -9,9 +9,7 @@ from app.models.admin import Admin
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(
-        password.encode("utf-8"), bcrypt.gensalt()
-    ).decode("utf-8")
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -36,12 +34,8 @@ async def bootstrap_admin(session: AsyncSession) -> Admin:
     return admin
 
 
-async def authenticate_admin(
-    session: AsyncSession, email: str, password: str
-) -> Admin | None:
-    result = await session.execute(
-        select(Admin).where(Admin.email == email)
-    )
+async def authenticate_admin(session: AsyncSession, email: str, password: str) -> Admin | None:
+    result = await session.execute(select(Admin).where(Admin.email == email))
     admin = result.scalar_one_or_none()
     if admin is None:
         return None
@@ -50,8 +44,6 @@ async def authenticate_admin(
     return admin
 
 
-async def get_admin_by_id(
-    session: AsyncSession, admin_id: int
-) -> Admin | None:
+async def get_admin_by_id(session: AsyncSession, admin_id: int) -> Admin | None:
     result = await session.execute(select(Admin).where(Admin.id == admin_id))
     return result.scalar_one_or_none()

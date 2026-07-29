@@ -40,12 +40,8 @@ async def test_create_duplicate_slug(client: AsyncClient) -> None:
 @pytest.mark.anyio
 async def test_list_waitlists(client: AsyncClient) -> None:
     headers = {"X-API-Key": get_settings().api_key}
-    await client.post(
-        "/waitlists", json={"slug": "a", "title": "A"}, headers=headers
-    )
-    await client.post(
-        "/waitlists", json={"slug": "b", "title": "B"}, headers=headers
-    )
+    await client.post("/waitlists", json={"slug": "a", "title": "A"}, headers=headers)
+    await client.post("/waitlists", json={"slug": "b", "title": "B"}, headers=headers)
 
     response = await client.get("/waitlists", headers=headers)
     assert response.status_code == 200
@@ -127,9 +123,7 @@ async def test_unauthorized_without_api_key(client: AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_unauthorized_wrong_api_key(client: AsyncClient) -> None:
-    response = await client.get(
-        "/waitlists", headers={"X-API-Key": "wrong-key"}
-    )
+    response = await client.get("/waitlists", headers={"X-API-Key": "wrong-key"})
     assert response.status_code == 401
 
 

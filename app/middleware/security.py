@@ -13,9 +13,7 @@ class SecurityHeadersMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(
-        self, scope: Scope, receive: Receive, send: Send
-    ) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -55,9 +53,7 @@ class RequestBodySizeMiddleware:
         self.app = app
         self.max_bytes = max_bytes
 
-    async def __call__(
-        self, scope: Scope, receive: Receive, send: Send
-    ) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -87,18 +83,24 @@ class RequestBodySizeMiddleware:
         await self.app(scope, sized_receive, send)
 
 
-SENSITIVE_FIELDS = frozenset({
-    "api_key", "API_KEY",
-    "jwt_secret", "JWT_SECRET",
-    "admin_password", "ADMIN_PASSWORD",
-    "smtp_password", "SMTP_PASSWORD",
-    "password",
-    "password_hash",
-    "secret",
-    "token",
-    "authorization",
-    "x-api-key",
-})
+SENSITIVE_FIELDS = frozenset(
+    {
+        "api_key",
+        "API_KEY",
+        "jwt_secret",
+        "JWT_SECRET",
+        "admin_password",
+        "ADMIN_PASSWORD",
+        "smtp_password",
+        "SMTP_PASSWORD",
+        "password",
+        "password_hash",
+        "secret",
+        "token",
+        "authorization",
+        "x-api-key",
+    }
+)
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -113,8 +115,7 @@ class SensitiveDataFilter(logging.Filter):
             # Also redact values passed as args for %-style formatting
             if record.args:
                 record.args = tuple(
-                    str(a).replace(field, f"{field[:4]}...")
-                    if isinstance(a, str) else a
+                    str(a).replace(field, f"{field[:4]}...") if isinstance(a, str) else a
                     for a in record.args
                 )
         return True

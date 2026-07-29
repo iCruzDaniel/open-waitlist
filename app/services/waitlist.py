@@ -32,9 +32,7 @@ async def get_waitlist_by_slug(
     return result.scalar_one_or_none()
 
 
-async def create_waitlist(
-    session: AsyncSession, payload: WaitlistCreate
-) -> Waitlist:
+async def create_waitlist(session: AsyncSession, payload: WaitlistCreate) -> Waitlist:
     wl = Waitlist(
         slug=payload.slug,
         title=payload.title,
@@ -54,17 +52,13 @@ async def update_waitlist(
         return await get_waitlist_by_slug(session, slug)
 
     await session.execute(
-        update(Waitlist)
-        .where(Waitlist.slug == slug, Waitlist.is_active.is_(True))
-        .values(**values)
+        update(Waitlist).where(Waitlist.slug == slug, Waitlist.is_active.is_(True)).values(**values)
     )
     await session.commit()
     return await get_waitlist_by_slug(session, slug)
 
 
-async def soft_delete_waitlist(
-    session: AsyncSession, slug: str
-) -> Waitlist | None:
+async def soft_delete_waitlist(session: AsyncSession, slug: str) -> Waitlist | None:
     wl = await get_waitlist_by_slug(session, slug)
     if wl is None:
         return None

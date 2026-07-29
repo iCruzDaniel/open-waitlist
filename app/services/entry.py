@@ -8,14 +8,10 @@ from app.models.waitlist import Waitlist
 from app.schemas.entry import EntryCreate
 
 
-async def create_entry(
-    session: AsyncSession, slug: str, payload: EntryCreate
-) -> Entry:
+async def create_entry(session: AsyncSession, slug: str, payload: EntryCreate) -> Entry:
     """Create an entry in a waitlist, auto-creating the waitlist if needed."""
     # Find or auto-create waitlist
-    result = await session.execute(
-        select(Waitlist).where(Waitlist.slug == slug)
-    )
+    result = await session.execute(select(Waitlist).where(Waitlist.slug == slug))
     wl = result.scalar_one_or_none()
 
     if wl is None:
@@ -59,9 +55,7 @@ async def list_entries(
     limit: int = 50,
 ) -> tuple[list[Entry], int]:
     """List entries for a waitlist with pagination. Returns (items, total)."""
-    result = await session.execute(
-        select(Waitlist.id).where(Waitlist.slug == slug)
-    )
+    result = await session.execute(select(Waitlist.id).where(Waitlist.slug == slug))
     wl_id = result.scalar_one_or_none()
     if wl_id is None:
         return [], 0

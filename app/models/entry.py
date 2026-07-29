@@ -27,6 +27,4 @@ class Entry(TimestampMixin, Base):
     notified_email: Mapped[bool] = mapped_column(default=False, nullable=False)
     notified_webhook: Mapped[bool] = mapped_column(default=False, nullable=False)
 
-    waitlist: Mapped[Waitlist] = relationship(
-        "Waitlist", back_populates="entries"
-    )
+    waitlist: Mapped[Waitlist] = relationship("Waitlist", back_populates="entries")

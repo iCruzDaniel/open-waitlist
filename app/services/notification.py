@@ -37,9 +37,7 @@ async def notify_new_entry(entry_id: int) -> None:
                     entry.id,
                 )
             except Exception:
-                logger.exception(
-                    "Failed to send email for entry %d", entry.id
-                )
+                logger.exception("Failed to send email for entry %d", entry.id)
 
         if settings.webhook_url and not entry.notified_webhook:
             try:
@@ -47,9 +45,7 @@ async def notify_new_entry(entry_id: int) -> None:
                 entry.notified_webhook = True
                 logger.info("Webhook sent for entry %d", entry.id)
             except Exception:
-                logger.exception(
-                    "Failed to send webhook for entry %d", entry.id
-                )
+                logger.exception("Failed to send webhook for entry %d", entry.id)
 
         await session.commit()
 
