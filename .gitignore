@@ -21,6 +21,7 @@ data/
 # Admin panel
 admin-panel/node_modules/
 admin-panel/dist/
+.omo/
 
 # IDE
 .vscode/

@@ -1,9 +1,11 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -20,6 +22,8 @@ from app.middleware.security import (
     SecurityHeadersMiddleware,
     SensitiveDataFilter,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -50,6 +54,17 @@ def create_app() -> FastAPI:
     # --- Rate limiter ---
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+    # --- Admin panel (optional) ---
+    if settings.enable_admin_panel:
+        admin_dist = Path(__file__).resolve().parent.parent / "admin-panel" / "dist"
+        if admin_dist.is_dir():
+            app.mount("/admin", StaticFiles(directory=str(admin_dist), html=True), name="admin")
+        else:
+            logger.warning(
+                "Admin panel enabled but dist/ not found — "
+                "run 'npm run build' in admin-panel/",
+            )
 
     # --- Request body size limit ---
     app.add_middleware(RequestBodySizeMiddleware, max_bytes=settings.max_request_body_size)

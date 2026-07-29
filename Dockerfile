@@ -31,7 +31,7 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.6,source=/uv,target=/bin/uv \
 COPY admin-panel/ ./admin-panel/
 RUN if [ -f admin-panel/package.json ]; then \
         cd admin-panel && \
-        npm ci --omit=dev && \
+        npm ci && \
         npm run build && \
         rm -rf node_modules; \
     fi || true

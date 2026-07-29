@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import create_access_token, verify_access_token
 from app.auth.schemas import AdminRead, LoginRequest, TokenResponse
 from app.auth.service import authenticate_admin
+from app.config import get_settings
 from app.database import get_session
 from app.middleware.rate_limit import limiter
 from app.models.admin import Admin
@@ -30,7 +31,7 @@ async def login(
             detail="Invalid email or password",
         )
     token = create_access_token(str(admin.id))
-    return TokenResponse(access_token=token)
+    return TokenResponse(access_token=token, api_key=get_settings().api_key)
 
 
 async def require_admin(
