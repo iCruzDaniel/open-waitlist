@@ -1,0 +1,42 @@
+services:
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - data:/app/data
+    restart: unless-stopped
+    # Healthcheck (requires a DB connection to be fully ready)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # PostgreSQL — only activated with --profile postgres
+  db:
+    image: postgres:16-alpine
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_DB: openwaitlist
+      POSTGRES_USER: openwaitlist
+      POSTGRES_PASSWORD: changeme-db-password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwaitlist"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  data:
+  postgres_data:

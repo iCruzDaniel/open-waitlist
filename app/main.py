@@ -12,7 +12,7 @@ from app.api.v1.waitlists import router as waitlists_router
 from app.auth.router import router as auth_router
 from app.auth.service import bootstrap_admin
 from app.config import get_settings
-from app.database import _SessionFactory, dispose_engine
+from app.database import _SessionFactory, dispose_engine, wait_for_db
 from app.middleware.cors import configure_cors
 from app.middleware.rate_limit import limiter
 from app.middleware.security import (
@@ -24,6 +24,7 @@ from app.middleware.security import (
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await wait_for_db()
     async with _SessionFactory() as session:
         await bootstrap_admin(session)
     yield
