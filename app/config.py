@@ -44,6 +44,21 @@ class Settings(BaseSettings):
 
     # --- Logging ---
     log_level: str = "INFO"
+    log_sensitive_redact: bool = True
+
+    # --- Security ---
+    cors_origins: str = "*"  # comma-separated; set to your domain in production
+    max_request_body_size: int = 1_048_576  # 1 MB
+    content_security_policy: str = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
 
 
 @lru_cache

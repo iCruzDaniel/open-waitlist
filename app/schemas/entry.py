@@ -22,7 +22,7 @@ class EntryRead(BaseModel):
     waitlist_id: int
     data: dict
     email: str | None = None
-    referrer: str | None = None
+    referrer: str | None = Field(None, max_length=2000)
     created_at: datetime
 
 

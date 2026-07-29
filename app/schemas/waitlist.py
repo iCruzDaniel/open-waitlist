@@ -8,12 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 class WaitlistCreate(BaseModel):
     slug: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-z0-9-]+$")
     title: str = Field(..., min_length=1, max_length=255)
-    description: str | None = None
+    description: str | None = Field(None, max_length=2000)
 
 
 class WaitlistUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
+    description: str | None = Field(None, max_length=2000)
 
 
 class WaitlistRead(BaseModel):
@@ -22,7 +22,7 @@ class WaitlistRead(BaseModel):
     id: int
     slug: str
     title: str
-    description: str | None = None
+    description: str | None = Field(None, max_length=2000)
     is_active: bool = True
     created_at: datetime
     updated_at: datetime | None = None
