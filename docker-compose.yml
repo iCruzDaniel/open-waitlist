@@ -1,7 +1,7 @@
 services:
 
   api:
-    image: ${DOCKER_USERNAME:-tudockerhub}/waitlistgo:latest
+    image: dcruz04/waitlistgo:latest
     ports:
       - "8000:8000"
     env_file:
