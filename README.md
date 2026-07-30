@@ -60,6 +60,8 @@ Servidor en `http://localhost:8000`.
 | `NOTIFY_WEBHOOK_URL` | — | URL de webhook para notificaciones |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Límite de requests por minuto en `/entries` |
 | `ADMIN_RATE_LIMIT_PER_MINUTE` | `30` | Límite de requests por minuto en `/auth/login` |
+| `API_PORT` | `8000` | Puerto host para la API (solo Docker) |
+| `DB_PORT` | `5432` | Puerto host para PostgreSQL (solo Docker) |
 
 Ver `.env.example` para valores completos.
 
