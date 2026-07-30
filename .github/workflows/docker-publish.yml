@@ -52,6 +52,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -61,26 +64,27 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             mkdir -p /opt/waitlistgo
-            cat > /opt/waitlistgo/.env <<EOF
-            DATABASE_TYPE=sqlite
-            DATABASE_URL=sqlite+aiosqlite:///app/data/waitlist.db
-            API_KEY=${{ secrets.API_KEY }}
-            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-            JWT_ALGORITHM=HS256
-            JWT_EXPIRE_MINUTES=1440
-            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-            ENABLE_ADMIN_PANEL=true
-            ENABLE_DOCS=false
-            EOF
-            docker pull ${{ secrets.DOCKER_USERNAME }}/waitlistgo:latest
-            docker stop waitlistgo || true
-            docker rm waitlistgo || true
-            docker run -d \
-              --name waitlistgo \
-              -p 8000:8000 \
-              --restart unless-stopped \
-              -v waitlist_data:/app/data \
-              --env-file /opt/waitlistgo/.env \
-              ${{ secrets.DOCKER_USERNAME }}/waitlistgo:latest
+            chmod 700 /opt/waitlistgo
+
+      - name: Upload docker-compose.yml to VPS
+        uses: appleboy/scp-action@v0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: docker-compose.yml
+          target: /opt/waitlistgo/
+
+      - name: Pull and restart via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/waitlistgo
+            docker compose pull
+            docker compose up -d
             docker image prune -f

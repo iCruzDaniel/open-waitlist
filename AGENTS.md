@@ -27,11 +27,17 @@ npm run dev
 npm run build
 ```
 
-**Docker**
+**Docker — desarrollo**
 ```bash
-docker compose up -d --build              # SQLite (default)
-docker compose --profile postgres up -d --build   # con Postgres
-docker compose logs -f api
+docker compose -f docker-compose.dev.yml up -d --build              # SQLite
+docker compose -f docker-compose.dev.yml --profile postgres up -d --build   # con Postgres
+docker compose -f docker-compose.dev.yml logs -f api
+```
+
+**Docker — producción (VPS)**
+```bash
+docker compose up -d                          # SQLite (usa imagen de DockerHub)
+docker compose --profile postgres up -d       # con Postgres
 ```
 
 ## Reglas no negociables (no desviarse del plan sin avisar)
