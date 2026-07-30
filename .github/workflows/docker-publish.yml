@@ -67,7 +67,7 @@ jobs:
             chmod 700 /opt/waitlistgo
 
       - name: Upload docker-compose.yml to VPS
-        uses: appleboy/scp-action@v0
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           port: ${{ secrets.VPS_PORT || '22' }}
