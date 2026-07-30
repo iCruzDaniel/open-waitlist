@@ -57,8 +57,9 @@ COPY --from=frontend-builder /build/dist/ ./admin-panel/dist/
 # =============================================================================
 FROM python:3.12-slim
 
-# Create non-root user
-RUN groupadd -r openwaitlist && useradd -r -g openwaitlist -d /app -s /sbin/nologin openwaitlist
+# Create non-root user with fixed UID/GID matching the host developer
+# (UID 1000 = cruz, needed for bind-mount SQLite write access from host)
+RUN groupadd -g 1000 openwaitlist && useradd -u 1000 -g openwaitlist -d /app -s /sbin/nologin openwaitlist
 
 # Install gosu for step-down from root in entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends gosu && \
