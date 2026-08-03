@@ -104,6 +104,10 @@ class ApiClient {
     return h
   }
 
+  authHeaders(): Record<string, string> {
+    return this.headers()
+  }
+
   async get<T>(path: string): Promise<T> {
     const res = await fetch(path, { headers: this.headers() })
     if (res.status === 401) {
@@ -175,6 +179,106 @@ class ApiClient {
     if (!res.ok) throw new Error(`CSV download failed (${res.status})`)
     return res.blob()
   }
+
+  async startExport(slug: string): Promise<{ job_id: string }> {
+    const res = await fetch(`/waitlists/${slug}/entries/export`, {
+      method: 'POST',
+      headers: this.authHeaders(),
+    })
+    if (res.status === 401) {
+      clearAuth()
+      window.location.hash = '#/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `Export start failed (${res.status})`)
+    }
+    return res.json() as Promise<{ job_id: string }>
+  }
+
+  async streamExportStatus(
+    slug: string,
+    jobId: string,
+    handlers: {
+      onProgress: (progress: number) => void
+      onDone: (downloadUrl: string) => void
+      onError: (message: string) => void
+    }
+  ): Promise<void> {
+    const res = await fetch(
+      `/waitlists/${slug}/entries/export/${jobId}/status`,
+      { headers: this.authHeaders() }
+    )
+    if (res.status === 401) {
+      clearAuth()
+      window.location.hash = '#/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok || !res.body) {
+      throw new Error(`Export status failed (${res.status})`)
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() ?? ''
+
+        for (const frame of frames) {
+          let eventType = ''
+          let dataLine = ''
+
+          for (const line of frame.split('\n')) {
+            if (line.startsWith('event:')) {
+              eventType = line.slice(6).trim()
+            } else if (line.startsWith('data:')) {
+              dataLine = line.slice(5).trim()
+            }
+          }
+
+          if (!eventType || !dataLine) continue
+
+          const data = JSON.parse(dataLine) as Record<string, unknown>
+
+          switch (eventType) {
+            case 'progress':
+              handlers.onProgress(data.progress as number)
+              break
+            case 'done':
+              handlers.onDone(data.download_url as string)
+              return
+            case 'error':
+              handlers.onError(data.message as string)
+              return
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  async downloadExport(slug: string, jobId: string): Promise<void> {
+    const blob = await this.getCsvBlob(
+      `/waitlists/${slug}/entries/export/${jobId}/download`
+    )
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${slug}-entries.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 }
 
 export const api = new ApiClient()
@@ -219,14 +323,27 @@ export async function fetchEntries(
   )
 }
 
-export async function downloadCsv(slug: string): Promise<void> {
-  const blob = await api.getCsvBlob(`/waitlists/${slug}/entries/csv`)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${slug}-entries.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+export async function downloadExport(
+  slug: string,
+  jobId: string
+): Promise<void> {
+  return api.downloadExport(slug, jobId)
+}
+
+export async function startExport(
+  slug: string
+): Promise<{ job_id: string }> {
+  return api.startExport(slug)
+}
+
+export async function streamExportStatus(
+  slug: string,
+  jobId: string,
+  handlers: {
+    onProgress: (progress: number) => void
+    onDone: (downloadUrl: string) => void
+    onError: (message: string) => void
+  }
+): Promise<void> {
+  return api.streamExportStatus(slug, jobId, handlers)
 }

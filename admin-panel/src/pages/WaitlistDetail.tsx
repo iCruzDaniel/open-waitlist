@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchEntries, downloadCsv } from '../api/client'
+import {
+  fetchEntries,
+  startExport,
+  streamExportStatus,
+  downloadExport,
+} from '../api/client'
 import type { Entry } from '../api/client'
 
 export default function WaitlistDetail() {
@@ -11,6 +16,9 @@ export default function WaitlistDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState<number | null>(null)
+  const [exportError, setExportError] = useState('')
 
   const load = async () => {
     if (!slug) return
@@ -33,13 +41,33 @@ export default function WaitlistDetail() {
 
   const handleDownload = async () => {
     if (!slug) return
-    setDownloading(true)
+    setExporting(true)
+    setExportError('')
     try {
-      await downloadCsv(slug)
+      const { job_id } = await startExport(slug)
+      await streamExportStatus(slug, job_id, {
+        onProgress: (p) => setExportProgress(p),
+        onDone: async () => {
+          setExportProgress(100)
+          setDownloading(true)
+          try {
+            await downloadExport(slug, job_id)
+          } finally {
+            setDownloading(false)
+          }
+        },
+        onError: (msg) => {
+          setExportError(msg)
+          setExportProgress(null)
+        },
+      })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'CSV download failed')
+      setExportError(
+        err instanceof Error ? err.message : 'Export failed'
+      )
     } finally {
-      setDownloading(false)
+      setExporting(false)
+      setExportProgress(null)
     }
   }
 
@@ -89,24 +117,47 @@ export default function WaitlistDetail() {
 
           <button
             onClick={handleDownload}
-            disabled={downloading || loading || entries.length === 0}
+            disabled={exporting || downloading || loading || entries.length === 0}
             className="inline-flex items-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg
-              className="-ml-0.5 mr-1.5 h-4 w-4"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
-              <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
-            </svg>
-            {downloading ? 'Downloading...' : 'Export CSV'}
+            {exporting && exportProgress !== null ? (
+              <>
+                <div className="h-2 w-40 bg-gray-200 rounded-full overflow-hidden mr-2">
+                  <div
+                    className="bg-indigo-600 h-full transition-all"
+                    style={{ width: `${exportProgress}%` }}
+                  />
+                </div>
+                {downloading
+                  ? 'Downloading…'
+                  : `Exporting… ${Math.round(exportProgress)}%`}
+              </>
+            ) : (
+              <>
+                <svg
+                  className="-ml-0.5 mr-1.5 h-4 w-4"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                  <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                </svg>
+                {downloading ? 'Downloading…' : 'Export CSV'}
+              </>
+            )}
           </button>
         </div>
       </header>
 
       {/* Main */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Export error */}
+        {exportError && (
+          <div className="rounded-md bg-red-50 p-4 mb-6">
+            <p className="text-sm font-medium text-red-800">{exportError}</p>
+          </div>
+        )}
+
         {/* Loading */}
         {loading && (
           <div className="text-center py-12">
