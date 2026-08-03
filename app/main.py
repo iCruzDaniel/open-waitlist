@@ -10,6 +10,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.v1.entries import router as entries_router
+from app.api.v1.exports import router as exports_router
 from app.api.v1.waitlists import router as waitlists_router
 from app.auth.router import router as auth_router
 from app.auth.service import bootstrap_admin
@@ -22,15 +23,24 @@ from app.middleware.security import (
     SecurityHeadersMiddleware,
     SensitiveDataFilter,
 )
+from app.services.export import ExportJobManager
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await wait_for_db()
     async with _SessionFactory() as session:
         await bootstrap_admin(session)
+    settings = get_settings()
+    app.state.export_manager = ExportJobManager(
+        export_dir=Path(settings.export_dir),
+        ttl_minutes=settings.export_ttl_minutes,
+        session_factory=_SessionFactory,
+    )
+    app.state.export_manager.export_dir.mkdir(parents=True, exist_ok=True)
+    await app.state.export_manager._sweep()
     yield
     await dispose_engine()
 
@@ -78,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(waitlists_router)
     app.include_router(entries_router)
+    app.include_router(exports_router)
 
     # --- Routes ---
     @app.get("/health")

@@ -26,6 +26,7 @@
 - **Free-form entry data.** `entry.data` is arbitrary JSON. No forced schema, no required fields beyond what you choose to validate.
 - **Dual authentication.** `X-API-Key` for public/landing endpoints. JWT for the admin panel. Never mixed on the same route.
 - **Background notifications.** Email (SMTP) and webhook fire as background tasks. They never add latency to the POST response and never break it if they fail.
+- **Async CSV export with live progress.** Exports run as background jobs; the admin panel shows a real-time progress bar via Server-Sent Events and downloads the file when ready. The CSV ships with a UTF-8 BOM, flattened per-field columns, and CSV-injection sanitization.
 - **Rate limiting.** Configurable per-endpoint rate limits on entries (`POST /waitlists/{slug}/entries`) and login (`POST /auth/login`).
 - **Admin panel.** React 18 + TypeScript + Tailwind + Vite, served at `/admin` from the same Docker image. No separate nginx container.
 - **SQLite by default, Postgres ready.** SQLite for local dev. PostgreSQL via Docker Compose `--profile postgres` for production.
@@ -107,8 +108,6 @@ docker compose logs -f api
 | Method | Route | Description |
 |--------|-------|-------------|
 | `POST` | `/waitlists/{slug}/entries` | Add a lead. Auto-creates the waitlist if it doesn't exist. |
-| `GET` | `/waitlists/{slug}/entries` | List entries (paginated with `skip` and `limit` query params). |
-| `GET` | `/waitlists/{slug}/entries/export` | Export all entries as CSV. |
 
 ### Admin Endpoints (JWT)
 
@@ -121,6 +120,36 @@ docker compose logs -f api
 | `GET` | `/waitlists/{slug}` | Get waitlist details. |
 | `PATCH` | `/waitlists/{slug}` | Update a waitlist. |
 | `DELETE` | `/waitlists/{slug}` | Soft-delete a waitlist. |
+| `GET` | `/waitlists/{slug}/entries` | List entries (paginated with `skip` and `limit`). |
+| `POST` | `/waitlists/{slug}/entries/export` | Start a background CSV export. Returns a `job_id` (`202`). |
+| `GET` | `/waitlists/{slug}/entries/export/{job_id}/status` | SSE stream with live export progress (0–100%). |
+| `GET` | `/waitlists/{slug}/entries/export/{job_id}/download` | Download the generated CSV file. |
+
+> **Security note:** only `POST /waitlists/{slug}/entries` is exposed with the public `X-API-Key`.
+> Everything that reads or modifies data (list, export, waitlists CRUD) requires a JWT admin token —
+> the API key lives in public landing pages and must never be able to dump leads.
+
+### Async CSV Export
+
+Exports run as background jobs so large waitlists never block the API. The flow:
+
+1. `POST /waitlists/{slug}/entries/export` (JWT) returns a `job_id` immediately.
+2. `GET .../export/{job_id}/status` (JWT) opens a Server-Sent Events stream that reports progress:
+
+```
+event: progress
+data: {"job_id":"...","slug":"...","status":"processing","progress":46,"processed":2000,"total":5000}
+
+event: done
+data: {"job_id":"...","slug":"...","status":"done","progress":100,"processed":5000,"total":5000,
+       "download_url":"/waitlists/{slug}/entries/export/{job_id}/download"}
+```
+
+3. `GET .../export/{job_id}/download` (JWT) serves the finished file.
+
+The CSV is UTF-8 with BOM (opens correctly in Excel), flattens `entry.data` into one column per field,
+and sanitizes cells against CSV formula injection (`=`, `+`, `-`, `@` prefixes are neutralized).
+Jobs expire after `EXPORT_TTL_MINUTES` and their files are cleaned up automatically.
 
 ### Health Check
 
@@ -186,6 +215,8 @@ All settings are driven by environment variables. Copy `.env.example` to `.env` 
 | `MAX_REQUEST_BODY_SIZE` | `1048576` | Max request body in bytes (1 MB) |
 | `API_PORT` | `8000` | Host port for the API (Docker only) |
 | `DB_PORT` | `5432` | Host port for PostgreSQL (Docker only) |
+| `EXPORT_DIR` | `data/exports` | Directory for generated CSV files |
+| `EXPORT_TTL_MINUTES` | `60` | Time-to-live for export jobs and files |
 
 See `.env.example` for the full list with comments.
 
