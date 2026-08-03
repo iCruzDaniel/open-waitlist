@@ -3,8 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.router import require_admin
 from app.database import get_session
-from app.middleware.api_key import verify_api_key
 from app.schemas.waitlist import WaitlistCreate, WaitlistRead, WaitlistUpdate
 from app.services.waitlist import (
     create_waitlist,
@@ -14,7 +14,7 @@ from app.services.waitlist import (
     update_waitlist,
 )
 
-router = APIRouter(prefix="/waitlists", tags=["waitlists"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(prefix="/waitlists", tags=["waitlists"], dependencies=[Depends(require_admin)])
 
 
 def _waitlist_to_read(wl, entry_count: int = 0) -> WaitlistRead:
