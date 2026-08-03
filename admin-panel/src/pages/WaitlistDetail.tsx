@@ -80,9 +80,6 @@ export default function WaitlistDetail() {
       minute: '2-digit',
     })
 
-  const truncate = (s: string, max = 60) =>
-    s.length > max ? s.slice(0, max) + '...' : s
-
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -244,10 +241,13 @@ export default function WaitlistDetail() {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 font-mono max-w-xs">
-                        <span title={JSON.stringify(entry.data, null, 2)}>
-                          {truncate(JSON.stringify(entry.data))}
-                        </span>
+                      <td className="px-6 py-4 text-sm text-gray-500 font-mono">
+                        <div
+                          className="max-w-xs truncate"
+                          title={JSON.stringify(entry.data, null, 2)}
+                        >
+                          {JSON.stringify(entry.data)}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {formatDate(entry.created_at)}
