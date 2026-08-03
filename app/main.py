@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.api.docs import OpenWaitlistAPI, install_docs
 from app.api.v1.entries import router as entries_router
 from app.api.v1.exports import router as exports_router
 from app.api.v1.waitlists import router as waitlists_router
@@ -48,11 +49,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
 
-    app = FastAPI(
+    app = OpenWaitlistAPI(
         title="OpenWaitlist API",
         version="0.1.0",
-        docs_url="/docs" if settings.enable_docs else None,
-        redoc_url="/redoc" if settings.enable_docs else None,
+        # Docs are registered via install_docs() with local, CSP-compatible
+        # assets — FastAPI's defaults load them from CDNs.
+        docs_url=None,
+        redoc_url=None,
         lifespan=lifespan,
     )
 
@@ -74,6 +77,10 @@ def create_app() -> FastAPI:
             logger.warning(
                 "Admin panel enabled but dist/ not found — run 'npm run build' in admin-panel/",
             )
+
+    # --- Docs (local Swagger UI / ReDoc assets, CSP-compatible) ---
+    if settings.enable_docs:
+        install_docs(app)
 
     # --- Request body size limit ---
     app.add_middleware(RequestBodySizeMiddleware, max_bytes=settings.max_request_body_size)

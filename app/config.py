@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     content_security_policy: str = (
         "default-src 'self'; "
         "script-src 'self'; "
+        # Swagger UI runs a Web Worker from a same-origin blob URL
+        "worker-src 'self' blob:; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "font-src 'self'; "
