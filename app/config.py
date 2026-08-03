@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_sensitive_redact: bool = True
 
+    # --- Export CSV ---
+    export_dir: str = "data/exports"
+    export_ttl_minutes: int = 60
+
+    # --- Ports (host bind) ---
+    api_port: int = 8000
+    db_port: int = 5432
+
     # --- Security ---
     cors_origins: str = "*"  # comma-separated; set to your domain in production
     max_request_body_size: int = 1_048_576  # 1 MB
