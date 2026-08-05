@@ -6,7 +6,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # --- Database ---
     database_type: Literal["sqlite", "postgres"] = "sqlite"
@@ -15,8 +19,21 @@ class Settings(BaseSettings):
         description="SQLAlchemy async database URL",
     )
 
+    # --- Bot protection (Cloudflare Turnstile) ---
+    turnstile_site_key: str = Field(
+        default="",
+        description="Public site key. Used by landing pages, never by the backend.",
+    )
+    turnstile_secret_key: str = Field(
+        default="",
+        description="Secret key for server-side verification. Empty disables it (dev mode).",
+    )
+    turnstile_allowed_hostnames: str = Field(
+        default="",
+        description="Comma-separated hostnames allowed to submit tokens. Empty skips the check.",
+    )
+
     # --- Auth ---
-    api_key: str = Field(default="changeme-api-key")
     jwt_secret: str = Field(default="changeme-jwt-secret", min_length=16)
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440  # 24 h

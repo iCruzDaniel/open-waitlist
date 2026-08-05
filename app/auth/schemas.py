@@ -11,7 +11,6 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    api_key: str | None = None
 
 
 class AdminRead(BaseModel):

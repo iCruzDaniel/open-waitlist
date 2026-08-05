@@ -24,7 +24,7 @@
 
 - **Auto-created waitlists.** POST to any slug and the waitlist is created on the spot, no pre-registration required.
 - **Free-form entry data.** `entry.data` is arbitrary JSON. No forced schema, no required fields beyond what you choose to validate.
-- **Dual authentication.** `X-API-Key` for public/landing endpoints. JWT for the admin panel. Never mixed on the same route.
+- **Bot protection.** Cloudflare Turnstile verifies human submissions on the public entry endpoint (no more shared API key living in client-side code). JWT for the admin panel. Never mixed on the same route.
 - **Background notifications.** Email (SMTP) and webhook fire as background tasks. They never add latency to the POST response and never break it if they fail.
 - **Async CSV export with live progress.** Exports run as background jobs; the admin panel shows a real-time progress bar via Server-Sent Events and downloads the file when ready. The CSV ships with a UTF-8 BOM, flattened per-field columns, and CSV-injection sanitization.
 - **Rate limiting.** Configurable per-endpoint rate limits on entries (`POST /waitlists/{slug}/entries`) and login (`POST /auth/login`).
@@ -41,7 +41,7 @@
   - [Local Development](#local-development)
   - [Docker](#docker)
 - [API Reference](#api-reference)
-  - [Public Endpoints](#public-endpoints-x-api-key)
+  - [Public Endpoints](#public-endpoints-turnstile)
   - [Admin Endpoints](#admin-endpoints-jwt)
   - [Health Check](#health-check)
   - [Adding a Lead](#adding-a-lead)
@@ -103,7 +103,7 @@ docker compose logs -f api
 
 ## API Reference
 
-### Public Endpoints (`X-API-Key`)
+### Public Endpoints (Turnstile)
 
 | Method | Route | Description |
 |--------|-------|-------------|
@@ -125,9 +125,9 @@ docker compose logs -f api
 | `GET` | `/waitlists/{slug}/entries/export/{job_id}/status` | SSE stream with live export progress (0–100%). |
 | `GET` | `/waitlists/{slug}/entries/export/{job_id}/download` | Download the generated CSV file. |
 
-> **Security note:** only `POST /waitlists/{slug}/entries` is exposed with the public `X-API-Key`.
+> **Security note:** only `POST /waitlists/{slug}/entries` is exposed publicly, protected by Cloudflare Turnstile.
 > Everything that reads or modifies data (list, export, waitlists CRUD) requires a JWT admin token —
-> the API key lives in public landing pages and must never be able to dump leads.
+> the Turnstile check only proves a human browser, so it must never be able to read leads.
 
 ### Async CSV Export
 
@@ -160,11 +160,14 @@ curl http://localhost:8000/health
 
 ### Adding a Lead
 
+The landing page embeds the Turnstile widget (site key) and submits the resulting
+token in the body. When no `TURNSTILE_SECRET_KEY` is configured (dev mode), the
+token is not required.
+
 ```bash
 curl -X POST http://localhost:8000/waitlists/launch-2025/entries \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: changeme-api-key" \
-  -d '{"email": "user@example.com", "name": "Alice", "referrer": "twitter"}'
+  -d '{"email": "user@example.com", "name": "Alice", "referrer": "twitter", "turnstile_token": "0.<token-from-widget>"}'
 ```
 
 Response (`201 Created`):
@@ -192,7 +195,9 @@ All settings are driven by environment variables. Copy `.env.example` to `.env` 
 |----------|---------|-------------|
 | `DATABASE_TYPE` | `sqlite` | `sqlite` or `postgres` |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./data/waitlist.db` | SQLAlchemy async connection string |
-| `API_KEY` | `changeme-api-key` | API key for public endpoints (sent via `X-API-Key` header) |
+| `TURNSTILE_SITE_KEY` | _(empty)_ | Cloudflare Turnstile site key. Used by landing pages (widget), never by the backend |
+| `TURNSTILE_SECRET_KEY` | _(empty)_ | Cloudflare Turnstile secret key for server-side verification. Empty disables verification (dev mode) |
+| `TURNSTILE_ALLOWED_HOSTNAMES` | _(empty)_ | Comma-separated hostnames allowed to submit tokens. Empty skips the origin check |
 | `JWT_SECRET` | `changeme-jwt-secret` | Secret for signing admin JWTs (min 16 chars) |
 | `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
 | `JWT_EXPIRE_MINUTES` | `1440` | JWT token lifetime (24 hours) |
@@ -278,14 +283,14 @@ waitlistgo/
 │   ├── api/v1/           # Routers (no business logic)
 │   │   ├── entries.py    #   POST entries, list, CSV export
 │   │   └── waitlists.py  #   CRUD waitlists
-│   ├── auth/             # API Key + JWT authentication
+│   ├── auth/             # Turnstile + JWT authentication
 │   │   └── router.py     #   POST /auth/login, GET /auth/me
 │   ├── core/             # Config, logging, middleware
 │   ├── db/               # Async engine, session factory, Base
 │   ├── middleware/        # CORS, rate limiting, security headers, body size
 │   ├── models/           # SQLAlchemy models
 │   ├── schemas/          # Pydantic v2 request/response schemas
-│   ├── services/         # Business logic (notifications, admin bootstrap)
+│   ├── services/         # Business logic (turnstile, notifications, admin bootstrap)
 │   └── main.py           # FastAPI app factory
 ├── admin-panel/          # React + Vite admin panel
 ├── alembic/              # Database migrations

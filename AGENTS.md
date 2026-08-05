@@ -44,7 +44,7 @@ docker compose --profile postgres up -d       # con Postgres
 
 - Dockerfile **multi-stage** obligatorio; la imagen final no debe contener compiladores ni `node_modules`/toolchain de build, solo el `.venv` y los estáticos ya compilados del panel.
 - `DATABASE_TYPE=sqlite|postgres` en `.env` decide el motor. Postgres vive en un **profile** de compose, nunca en `depends_on` duro — la app debe reintentar la conexión con backoff al arrancar (`tenacity`), no depender del orden de arranque de contenedores.
-- Auth: **API Key** (header `X-API-Key`) para la API — usada por landing/servicios. **JWT** solo para el panel admin. No mezclar los dos mecanismos en un mismo endpoint salvo que el plan lo indique.
+- Auth: **Cloudflare Turnstile** (site key + secret key) para el endpoint público de entradas — verificación de humanidad, no autenticación. **JWT** solo para el panel admin. No mezclar los dos mecanismos en un mismo endpoint salvo que el plan lo indique.
 - La entrada (`entry.data`) es **JSON libre, sin schema fijo**. No forzar campos obligatorios como `email` a nivel de Pydantic salvo validación mínima de tamaño/tipo.
 - `addtowaitlist` (`POST /waitlists/{slug}/entries`) **auto-crea** la waitlist si el slug no existe. No debe fallar por "waitlist no encontrada".
 - Waitlists se **soft-delete** (`is_active=false` / `deleted_at`), nunca DELETE físico.
@@ -52,7 +52,7 @@ docker compose --profile postgres up -d       # con Postgres
 - Rate limiting obligatorio en `POST /entries` y `POST /auth/login` desde el principio, no como "mejora futura".
 - `/docs` y `/redoc` apagados por defecto (`ENABLE_DOCS=false`).
 - Panel admin apagado por defecto (`ENABLE_ADMIN_PANEL=false`); cuando esté activo se sirve montado en `/admin` desde la misma imagen, sin contenedor nginx separado.
-- Nunca loguear API Keys, contraseñas, JWT completos ni el contenido crudo de secretos.
+- Nunca loguear secrets (Turnstile secret, contraseñas, JWT completos) ni el contenido crudo de secretos.
 - Contenedor corre con usuario no-root.
 
 ## Convenciones de código
@@ -74,7 +74,7 @@ Avanzar **una fase a la vez**, en el orden de la sección 14 del plan. Al cerrar
 - [ ] Fase 0 — Setup del proyecto ⟵ **empezar aquí**
 - [ ] Fase 1 — Core (config, DB, modelos, Alembic)
 - [ ] Fase 2 — App base (`main.py`, `/health`, middleware)
-- [ ] Fase 3 — Auth (API Key, JWT, bootstrap admin)
+- [ ] Fase 3 — Auth (Turnstile, JWT, bootstrap admin)
 - [ ] Fase 4 — CRUD Waitlists
 - [ ] Fase 5 — addtowaitlist
 - [ ] Fase 6 — readwaitlist + export CSV
@@ -100,5 +100,5 @@ Avanzar **una fase a la vez**, en el orden de la sección 14 del plan. Al cerrar
 
 1. Email de notificación: ¿solo aviso interno al equipo, o también confirmación automática al lead? Afecta a la Fase 7.
 2. Deduplicación de entradas repetidas en una misma waitlist: no implementado en el MVP, requiere definir una convención de campo si se quiere añadir.
-3. API Keys en `.env` (MVP) vs. tabla en base de datos con revocación individual: pasar a DB si se necesita dar acceso a múltiples clientes/formularios distintos.
+3. Turnstile (resuelto): verificación desactivable — `.env` sin `TURNSTILE_SECRET_KEY` = dev mode sin verificación; con secret, fail-closed (503) si Cloudflare no responde.
 4. Reverse proxy / HTTPS en el VPS: fuera de este repo, documentar como paso posterior (Caddy recomendado).

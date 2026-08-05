@@ -3,7 +3,6 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.config import get_settings
 from app.main import app
 
 
@@ -43,9 +42,6 @@ async def test_request_body_too_large() -> None:
         response = await client.post(
             "/waitlists/test/entries",
             content=large_str,
-            headers={
-                "Content-Type": "application/json",
-                "X-API-Key": get_settings().api_key,
-            },
+            headers={"Content-Type": "application/json"},
         )
     assert response.status_code == 413

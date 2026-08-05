@@ -85,8 +85,8 @@ class RequestBodySizeMiddleware:
 
 SENSITIVE_FIELDS = frozenset(
     {
-        "api_key",
-        "API_KEY",
+        "turnstile_secret_key",
+        "TURNSTILE_SECRET_KEY",
         "jwt_secret",
         "JWT_SECRET",
         "admin_password",
@@ -98,7 +98,6 @@ SENSITIVE_FIELDS = frozenset(
         "secret",
         "token",
         "authorization",
-        "x-api-key",
     }
 )
 

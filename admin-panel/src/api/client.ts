@@ -32,7 +32,6 @@ export interface EntriesResponse {
 export interface LoginResponse {
   access_token: string
   token_type: string
-  api_key: string
 }
 
 // ─── Auth State (localStorage) ──────────────────────────────────────────────
@@ -41,23 +40,16 @@ function getStoredToken(): string | null {
   return localStorage.getItem('jwt_token')
 }
 
-function getStoredApiKey(): string | null {
-  return localStorage.getItem('api_key')
-}
-
-function storeAuth(token: string, apiKey: string) {
+function storeAuth(token: string) {
   localStorage.setItem('jwt_token', token)
-  localStorage.setItem('api_key', apiKey)
 }
 
 function clearAuth() {
   localStorage.removeItem('jwt_token')
-  localStorage.removeItem('api_key')
 }
 
 export function useAuth() {
   const [token, setToken] = useState<string | null>(getStoredToken)
-  const [apiKey, setApiKey] = useState<string | null>(getStoredApiKey)
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch('/auth/login', {
@@ -70,37 +62,32 @@ export function useAuth() {
       throw new Error(err.detail || 'Login failed')
     }
     const data: LoginResponse = await res.json()
-    storeAuth(data.access_token, data.api_key)
-    api.setAuth(data.access_token, data.api_key)   // ← sync global ApiClient
+    storeAuth(data.access_token)
+    api.setAuth(data.access_token)
     setToken(data.access_token)
-    setApiKey(data.api_key)
   }, [])
 
   const logout = useCallback(() => {
     clearAuth()
-    api.setAuth(null, null)                         // ← clear global ApiClient
+    api.setAuth(null)
     setToken(null)
-    setApiKey(null)
   }, [])
 
-  return { token, apiKey, login, logout, isLoggedIn: !!token }
+  return { token, login, logout, isLoggedIn: !!token }
 }
 
 // ─── API Client ─────────────────────────────────────────────────────────────
 
 class ApiClient {
   private token: string | null = null
-  private apiKey: string | null = null
 
-  setAuth(token: string | null, apiKey: string | null) {
+  setAuth(token: string | null) {
     this.token = token
-    this.apiKey = apiKey
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = { ...extra }
     if (this.token) h['Authorization'] = `Bearer ${this.token}`
-    if (this.apiKey) h['X-API-Key'] = this.apiKey
     return h
   }
 
@@ -284,7 +271,7 @@ class ApiClient {
 export const api = new ApiClient()
 
 // Initialize from localStorage on load
-api.setAuth(getStoredToken(), getStoredApiKey())
+api.setAuth(getStoredToken())
 
 // ─── Waitlist API ───────────────────────────────────────────────────────────
 

@@ -10,22 +10,17 @@ from tests.conftest import admin_headers
 
 @pytest.mark.anyio
 async def test_export_requires_jwt(client: AsyncClient) -> None:
-    """Export endpoints require JWT, not API key."""
-    api_key_headers = {"X-API-Key": "changeme-api-key"}
-
-    # POST export with only API key -> 401
-    resp = await client.post(
-        "/waitlists/x/entries/export",
-        headers=api_key_headers,
-    )
+    """Export endpoints require JWT — no anonymous access."""
+    # POST export with no auth -> 401
+    resp = await client.post("/waitlists/x/entries/export")
     assert resp.status_code == 401
 
     # GET export status with no auth -> 401
     resp = await client.get("/waitlists/x/entries/export/abc123/status")
     assert resp.status_code == 401
 
-    # GET entries list with only API key -> 401
-    resp = await client.get("/waitlists/x/entries", headers=api_key_headers)
+    # GET entries list with no auth -> 401
+    resp = await client.get("/waitlists/x/entries")
     assert resp.status_code == 401
 
 
@@ -33,7 +28,6 @@ async def test_export_requires_jwt(client: AsyncClient) -> None:
 async def test_export_full_flow(client: AsyncClient, admin_token: str) -> None:
     """Full export flow: create waitlist, add entries, trigger export, poll SSE, download."""
     jwt = admin_headers(admin_token)
-    api_key_headers = {"X-API-Key": "changeme-api-key"}
 
     # Create waitlist via JWT
     await client.post(
@@ -42,16 +36,14 @@ async def test_export_full_flow(client: AsyncClient, admin_token: str) -> None:
         headers=jwt,
     )
 
-    # Add 2 entries via public API key with tricky data
+    # Add 2 entries with tricky data
     await client.post(
         "/waitlists/export-test/entries",
         json={"data": {"name": "Ana María", "emoji": "🎉"}},
-        headers=api_key_headers,
     )
     await client.post(
         "/waitlists/export-test/entries",
         json={"data": {"name": "Bob", "email": '=HYPERLINK("http://evil")'}},
-        headers=api_key_headers,
     )
 
     # Trigger export

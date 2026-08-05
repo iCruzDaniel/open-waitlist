@@ -1,20 +1,18 @@
 """Tests for entry creation endpoint (Fase 5) and listing/CSV (Fase 6)."""
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
-from app.config import get_settings
 from tests.conftest import admin_headers
 
 
 @pytest.mark.anyio
 async def test_add_entry_creates_waitlist_auto(client: AsyncClient, admin_token: str) -> None:
     """POST /waitlists/{slug}/entries auto-creates the waitlist."""
-    headers = {"X-API-Key": get_settings().api_key}
     response = await client.post(
         "/waitlists/auto-created/entries",
         json={"data": {"name": "Test"}},
-        headers=headers,
     )
     assert response.status_code == 201
     data = response.json()
@@ -31,7 +29,6 @@ async def test_add_entry_creates_waitlist_auto(client: AsyncClient, admin_token:
 
 @pytest.mark.anyio
 async def test_add_entry_to_existing_waitlist(client: AsyncClient, admin_token: str) -> None:
-    headers = {"X-API-Key": get_settings().api_key}
     jwt = admin_headers(admin_token)
     # Create waitlist first
     await client.post(
@@ -43,7 +40,6 @@ async def test_add_entry_to_existing_waitlist(client: AsyncClient, admin_token: 
     response = await client.post(
         "/waitlists/existing/entries",
         json={"data": {"email": "foo@bar.com", "source": "landing"}},
-        headers=headers,
     )
     assert response.status_code == 201
     assert response.json()["email"] == "foo@bar.com"
@@ -53,7 +49,6 @@ async def test_add_entry_to_existing_waitlist(client: AsyncClient, admin_token: 
 @pytest.mark.anyio
 async def test_add_entry_freeform_data(client: AsyncClient) -> None:
     """Entry.data is free-form JSON — no schema enforced."""
-    headers = {"X-API-Key": get_settings().api_key}
     payloads = [
         {"data": {"msg": "hello", "count": 42}},
         {"data": {"nested": {"key": "val", "arr": [1, 2, 3]}}},
@@ -64,7 +59,6 @@ async def test_add_entry_freeform_data(client: AsyncClient) -> None:
         resp = await client.post(
             f"/waitlists/{slug}/entries",
             json=payload,
-            headers=headers,
         )
         assert resp.status_code == 201, f"Failed for payload {i}: {resp.text}"
         assert resp.json()["data"] == payload["data"]
@@ -73,11 +67,9 @@ async def test_add_entry_freeform_data(client: AsyncClient) -> None:
 @pytest.mark.anyio
 async def test_add_entry_extracts_email_from_data(client: AsyncClient) -> None:
     """The service should extract email from data.email automatically."""
-    headers = {"X-API-Key": get_settings().api_key}
     response = await client.post(
         "/waitlists/email-test/entries",
         json={"data": {"email": "lead@example.com", "name": "John"}},
-        headers=headers,
     )
     assert response.status_code == 201
     assert response.json()["email"] == "lead@example.com"
@@ -86,13 +78,11 @@ async def test_add_entry_extracts_email_from_data(client: AsyncClient) -> None:
 @pytest.mark.anyio
 async def test_add_entry_rate_limited(client: AsyncClient) -> None:
     """Rate limit is 10/minute — 11th request should get 429."""
-    headers = {"X-API-Key": get_settings().api_key}
 
     for i in range(10):
         resp = await client.post(
             "/waitlists/ratelimit-test/entries",
             json={"data": {"seq": i}},
-            headers=headers,
         )
         # The slowapi limiter is "10/minute" — with per-test clients it
         # may not always trigger, but the endpoint should at least accept
@@ -103,24 +93,63 @@ async def test_add_entry_rate_limited(client: AsyncClient) -> None:
     resp = await client.post(
         "/waitlists/ratelimit-test/entries",
         json={"data": {"seq": 11}},
-        headers=headers,
     )
     # Accept either success (if rate limit window reset) or 429
     assert resp.status_code in (201, 429)
 
 
 @pytest.mark.anyio
-async def test_add_entry_missing_api_key(client: AsyncClient) -> None:
+async def test_add_entry_without_turnstile_in_dev_mode(client: AsyncClient) -> None:
+    """With no secret key configured, Turnstile verification is skipped."""
     response = await client.post(
-        "/waitlists/no-key/entries",
+        "/waitlists/dev-mode/entries",
         json={"data": {"x": 1}},
     )
-    assert response.status_code == 401
+    assert response.status_code == 201
+
+
+@pytest.mark.anyio
+async def test_add_entry_with_turnstile_token(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A turnstile token is forwarded to the verifier and never stored as data."""
+    captured: dict = {}
+
+    async def fake_verify(token: str | None, remote_ip: str | None = None) -> None:
+        captured["token"] = token
+        captured["remote_ip"] = remote_ip
+
+    monkeypatch.setattr("app.api.v1.entries.verify_turnstile", fake_verify)
+
+    resp = await client.post(
+        "/waitlists/turnstile-valid/entries",
+        json={"data": {"email": "a@b.com"}, "turnstile_token": "0.valid-token"},
+    )
+    assert resp.status_code == 201
+    assert captured["token"] == "0.valid-token"
+    assert captured["remote_ip"] is not None
+    assert resp.json()["email"] == "a@b.com"
+    assert "turnstile_token" not in resp.json()["data"]
+
+
+@pytest.mark.anyio
+async def test_add_entry_rejected_when_turnstile_fails(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_verify(_token: str | None, _remote_ip: str | None = None) -> None:
+        raise HTTPException(status_code=400, detail="Turnstile verification failed")
+
+    monkeypatch.setattr("app.api.v1.entries.verify_turnstile", fake_verify)
+
+    resp = await client.post(
+        "/waitlists/turnstile-invalid/entries",
+        json={"data": {"x": 1}, "turnstile_token": "0.bad-token"},
+    )
+    assert resp.status_code == 400
 
 
 @pytest.mark.anyio
 async def test_add_entry_entry_count_increments(client: AsyncClient, admin_token: str) -> None:
-    headers = {"X-API-Key": get_settings().api_key}
     jwt = admin_headers(admin_token)
     # Create waitlist
     await client.post(
@@ -133,7 +162,6 @@ async def test_add_entry_entry_count_increments(client: AsyncClient, admin_token
         resp = await client.post(
             "/waitlists/count-test/entries",
             json={"data": {"seq": i}},
-            headers=headers,
         )
         assert resp.status_code == 201
 
@@ -151,12 +179,10 @@ async def test_list_entries_paginated(client: AsyncClient, admin_token: str) -> 
         json={"slug": "list-paginated", "title": "List Test"},
         headers=jwt,
     )
-    headers = {"X-API-Key": get_settings().api_key}
     for i in range(5):
         await client.post(
             "/waitlists/list-paginated/entries",
             json={"data": {"seq": i}},
-            headers=headers,
         )
 
     # First page: 2 items
@@ -215,11 +241,9 @@ async def test_list_entries_nonexistent_waitlist(client: AsyncClient, admin_toke
 
 @pytest.mark.anyio
 async def test_add_entry_with_referrer(client: AsyncClient) -> None:
-    headers = {"X-API-Key": get_settings().api_key}
     resp = await client.post(
         "/waitlists/referrer-test/entries",
         json={"data": {"email": "user@example.com", "referrer": "https://google.com"}},
-        headers=headers,
     )
     assert resp.status_code == 201
     assert resp.json()["referrer"] == "https://google.com"
@@ -227,11 +251,9 @@ async def test_add_entry_with_referrer(client: AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_add_entry_email_normalized(client: AsyncClient) -> None:
-    headers = {"X-API-Key": get_settings().api_key}
     resp = await client.post(
         "/waitlists/normalize-email/entries",
         json={"data": {"email": "  UPPER@EXAMPLE.COM  "}},
-        headers=headers,
     )
     assert resp.status_code == 201
     assert resp.json()["email"] == "upper@example.com"
@@ -239,12 +261,10 @@ async def test_add_entry_email_normalized(client: AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_add_entry_large_data(client: AsyncClient) -> None:
-    headers = {"X-API-Key": get_settings().api_key}
     large_data = {"items": list(range(500)), "text": "x" * 10_000}
     resp = await client.post(
         "/waitlists/large-data/entries",
         json={"data": large_data},
-        headers=headers,
     )
     assert resp.status_code == 201
     assert len(resp.json()["data"]["items"]) == 500
@@ -258,12 +278,10 @@ async def test_list_entries_default_limit(client: AsyncClient, admin_token: str)
         json={"slug": "default-limit", "title": "Default"},
         headers=jwt,
     )
-    headers = {"X-API-Key": get_settings().api_key}
     for i in range(5):
         await client.post(
             "/waitlists/default-limit/entries",
             json={"data": {"seq": i}},
-            headers=headers,
         )
     resp = await client.get("/waitlists/default-limit/entries", headers=jwt)
     assert resp.status_code == 200

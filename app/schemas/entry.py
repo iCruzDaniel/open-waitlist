@@ -15,6 +15,7 @@ class EntryCreate(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     data: dict = Field(default_factory=dict, max_length=65536)
+    turnstile_token: str | None = Field(default=None, max_length=2048)
 
     @model_validator(mode="before")
     @classmethod
@@ -31,6 +32,8 @@ class EntryCreate(BaseModel):
                 values["data"] = merged
             else:
                 values["data"] = {k: v for k, v in values.items()}
+            # The Turnstile token is a verification concern, not lead data.
+            values["data"].pop("turnstile_token", None)
         return values
 
 

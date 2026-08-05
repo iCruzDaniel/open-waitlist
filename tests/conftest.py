@@ -26,6 +26,19 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def _disable_turnstile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force Turnstile dev mode so tests never call Cloudflare's siteverify."""
+    from app.config import Settings
+    from app.services import turnstile
+
+    monkeypatch.setattr(
+        turnstile,
+        "get_settings",
+        lambda: Settings(turnstile_secret_key=""),
+    )
+
+
 @pytest.fixture
 async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     """Create tables, seed admin, override DB, return test client."""
