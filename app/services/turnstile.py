@@ -58,14 +58,27 @@ async def verify_turnstile(
             transport=transport,
         ) as client:
             response = await client.post(SITEVERIFY_URL, data=body)
-            response.raise_for_status()
             result = TurnstileVerifyResponse.model_validate(response.json())
     except (httpx.HTTPError, ValueError) as exc:
-        logger.warning("Turnstile siteverify request failed: %s", exc)
+        logger.error("Turnstile siteverify request failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Verification service unavailable",
         ) from None
+
+    # A non-200 status means Cloudflare rejected the request itself (e.g. an
+    # invalid or missing secret key) — a server misconfiguration, not a bad
+    # visitor token. Fail closed and surface the error codes in the logs.
+    if response.status_code != 200:
+        logger.error(
+            "Turnstile siteverify rejected the request (HTTP %s): error_codes=%s",
+            response.status_code,
+            result.error_codes,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Verification service unavailable",
+        )
 
     if not result.success:
         logger.warning(

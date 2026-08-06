@@ -71,6 +71,22 @@ async def test_upstream_error_fails_closed() -> None:
 
 
 @pytest.mark.anyio
+async def test_rejected_request_fails_closed() -> None:
+    """Cloudflare rejecting the request (e.g. invalid secret) -> 503, not 400."""
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"error-codes": ["invalid-input-secret"], "success": False},
+        )
+
+    transport = MockTransport(handler)
+    with pytest.raises(HTTPException) as exc:
+        await verify_turnstile("token", settings=_settings(), transport=transport)
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.anyio
 async def test_hostname_not_allowed_rejected() -> None:
     async def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"success": True, "hostname": "evil.com"})
