@@ -1,0 +1,89 @@
+# Despliegue en Coolify: usa la red externa `coolify` (proxy inverso de Coolify
+# enruta al alias `waitlist-api`) y Postgres SIEMPRE activo en la red privada
+# `internal_net`. Sin puertos publicados al host.
+#
+# Fail-secure: si Coolify no define POSTGRES_PASSWORD, JWT_SECRET o
+# ADMIN_PASSWORD, el stack NO arranca y Compose muestra el motivo.
+# TURNSTILE_SECRET_KEY vacío = modo dev sin verificación; para producción
+# cargar la secret key real de Cloudflare (una key inválida o placeholder
+# provoca 503 en POST /entries).
+
+services:
+
+  api:
+    image: dcruz04/waitlistgo:${IMAGE_TAG:-latest}
+    environment:
+      # --- Database (siempre postgres aquí) ---
+      - 'DATABASE_TYPE=${DATABASE_TYPE:-postgres}'
+      - 'DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://openwaitlist:${POSTGRES_PASSWORD:-changeme-db-password}@db:5432/openwaitlist}'
+      # --- Bot protection (Cloudflare Turnstile) ---
+      - 'TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY:-}'
+      - 'TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}'
+      - 'TURNSTILE_ALLOWED_HOSTNAMES=${TURNSTILE_ALLOWED_HOSTNAMES:-}'
+      # --- Auth (JWT panel admin) ---
+      - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in Coolify (min 16 chars)}'
+      - 'JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}'
+      - 'JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES:-1440}'
+      # --- Admin ---
+      - 'ENABLE_ADMIN_PANEL=${ENABLE_ADMIN_PANEL:-true}'
+      - 'ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}'
+      - 'ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in Coolify (min 8 chars)}'
+      # --- Docs / Logging ---
+      - 'ENABLE_DOCS=${ENABLE_DOCS:-false}'
+      - 'LOG_LEVEL=${LOG_LEVEL:-INFO}'
+      # --- Notificaciones (opcional) ---
+      - 'SMTP_HOST=${SMTP_HOST:-}'
+      - 'SMTP_PORT=${SMTP_PORT:-587}'
+      - 'SMTP_USER=${SMTP_USER:-}'
+      - 'SMTP_PASSWORD=${SMTP_PASSWORD:-}'
+      - 'SMTP_FROM=${SMTP_FROM:-noreply@example.com}'
+      - 'NOTIFY_EMAIL_TO=${NOTIFY_EMAIL_TO:-admin@example.com}'
+      - 'WEBHOOK_URL=${WEBHOOK_URL:-}'
+      # RATE_LIMIT_ENTRIES / RATE_LIMIT_LOGIN no se incluyen a propósito: hoy
+      # el backend los tiene hardcodeados (10/minute y 5/minute), así que
+      # definirlos aquí no tendría efecto.
+    volumes:
+      - waitlist_data:/app/data
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      coolify:
+        aliases:
+          - waitlist-api
+      internal_net:
+    healthcheck:
+      # python siempre existe en la imagen runtime; curl y wget no
+      test: ["CMD", "python", "-c", "import urllib.request, sys; urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: openwaitlist
+      POSTGRES_USER: openwaitlist
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Coolify}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwaitlist -d openwaitlist"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  waitlist_data:
+  postgres_data:
+
+networks:
+  internal_net:
+    driver: bridge
+  coolify:
+    external: true

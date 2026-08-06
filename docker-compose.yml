@@ -1,7 +1,8 @@
 services:
 
   api:
-    image: dcruz04/waitlistgo:latest
+    # Pin a release with IMAGE_TAG (e.g. IMAGE_TAG=v1.2.3) instead of latest
+    image: dcruz04/waitlistgo:${IMAGE_TAG:-latest}
     ports:
       - "${API_PORT:-8000}:8000"
     env_file:
@@ -25,7 +26,9 @@ services:
     environment:
       POSTGRES_DB: openwaitlist
       POSTGRES_USER: openwaitlist
-      POSTGRES_PASSWORD: changeme-db-password
+      # Set POSTGRES_PASSWORD in your .env — the app's DATABASE_URL must use
+      # the same password. Only enforced when running with --profile postgres.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme-db-password}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
