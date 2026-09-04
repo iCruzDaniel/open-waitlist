@@ -1,10 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "cd admin-panel && npm ci && npm run build && rm -rf ../api/admin-dist && cp -r dist ../api/admin-dist",
+  "installCommand": "npm install",
   "functions": {
     "api/main.py": {
-      "excludeFiles": "{admin-panel/node_modules/**,tests/**,.venv/**,data/**,.omo/**,**/__pycache__/**,.git/**,docs/**,.github/**,.claude/**,.codex/**,.cursor/**,.kombai/**,.impeccable/**,alembic/**,*.db,*.sqlite3}"
+      "excludeFiles": "{admin-panel/node_modules/**,admin-panel/src/**,admin-panel/package-lock.json,tests/**,.venv/**,data/**,.omo/**,**/__pycache__/**,.git/**,docs/**,.github/**,.claude/**,.codex/**,.cursor/**,.kombai/**,.impeccable/**,alembic/**,*.db,*.sqlite3}"
     }
   },
   "rewrites": [
