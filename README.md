@@ -20,323 +20,226 @@
   <a href="https://img.shields.io/badge/PRs-welcome-00D2B8"><img src="https://img.shields.io/badge/PRs-welcome-00D2B8" alt="PRs Welcome"></a>
 </p>
 
-## Features
+---
 
-- **Auto-created waitlists.** POST to any slug and the waitlist is created on the spot, no pre-registration required.
-- **Free-form entry data.** `entry.data` is arbitrary JSON. No forced schema, no required fields beyond what you choose to validate.
-- **Bot protection.** Cloudflare Turnstile verifies human submissions on the public entry endpoint (no more shared API key living in client-side code). JWT for the admin panel. Never mixed on the same route.
-- **Background notifications.** Email (SMTP) and webhook fire as background tasks. They never add latency to the POST response and never break it if they fail.
-- **Async CSV export with live progress.** Exports run as background jobs; the admin panel shows a real-time progress bar via Server-Sent Events and downloads the file when ready. The CSV ships with a UTF-8 BOM, flattened per-field columns, and CSV-injection sanitization.
-- **Rate limiting.** Configurable per-endpoint rate limits on entries (`POST /waitlists/{slug}/entries`) and login (`POST /auth/login`).
-- **Admin panel.** React 18 + TypeScript + Tailwind + Vite, served at `/admin` from the same Docker image. No separate nginx container.
-- **SQLite by default, Postgres ready.** SQLite for local dev. PostgreSQL via Docker Compose `--profile postgres` for production.
-- **Multi-stage Dockerfile.** Compiles the admin panel and installs Python dependencies in builder stages. Final image runs as a non-root user with only runtime essentials.
-- **Security built in.** Configurable CORS, 1 MB request body limit, Content-Security-Policy headers, and automatic sensitive-data redaction in logs.
-- **Soft-delete.** Waitlists are deactivated (`is_active=false`), never physically removed.
-- **Health check and robots.** `GET /health` for uptime monitoring. `/robots.txt` blocks crawlers from `/admin/`.
+## 🎯 Pruébalo en segundos (no hace falta configurar nada)
 
-## Table of Contents
+¿Quieres ver qué hace sin leer más? Deja que OpenWaitlist se muestre solo.
 
-- [Quick Start](#quick-start)
-  - [Local Development](#local-development)
-  - [Docker](#docker)
-- [API Reference](#api-reference)
-  - [Public Endpoints](#public-endpoints-turnstile)
-  - [Admin Endpoints](#admin-endpoints-jwt)
-  - [Health Check](#health-check)
-  - [Adding a Lead](#adding-a-lead)
-- [Configuration](#configuration)
-- [Deployment](#deployment)
-- [Admin Panel](#admin-panel)
-- [Architecture](#architecture)
-- [Notifications](#notifications)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Quick Start
-
-### Local Development
-
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+**Modo demo (1 minuto):** sirve un formulario de leads en `/` con un botón **🎲 Random** que rellena datos realistas en un clic. Captura leads → míralos crecer en el panel admin.
 
 ```bash
-# 1. Clone and enter
-git clone https://github.com/iCruzDaniel/open-waitlist.git && cd open-waitlist
-
-# 2. Install dependencies
+cp .env.demo .env          # config demo lista (Redis + modo demo + admin panel)
 uv sync
-
-# 3. Copy environment variables
-cp .env.example .env
-
-# 4. Run database migrations
-uv run alembic upgrade head
-
-# 5. Start the dev server
 uv run uvicorn app.main:app --reload
 ```
 
-The API is live at `http://localhost:8000`.
+Abre **http://localhost:8000** → pulsa **🎲 Random → Join waitlist** un par de veces → entra en **http://localhost:8000/admin** y verás los leads que acabas de capturar. Listo. 🎉
 
-### Docker
+> 🔥 **¿En Vercel?** OpenWaitlist corre sin servidor con Upstash Redis — sin disco, sin contenedor. Los pasos están en [Despliegue](#despliegue).
 
-**SQLite (default):**
+---
 
-```bash
-docker compose up -d --build
-```
+## 💡 ¿Qué resuelve?
 
-**PostgreSQL:**
+Cada landing page tiene un formulario "único" de registro a una waitlist. Al final acabas con 15 formularios, 12 bases de datos y 0 visibilidad.
 
-```bash
-docker compose --profile postgres up -d --build
-```
+OpenWaitlist es un **único backend** que recibe los registros de todas tus landings hacia listas (waitlists) nombradas, y te da **un panel admin** para ver, gestionar y exportar esos leads.
 
-Requires `DATABASE_TYPE=postgres` and `DATABASE_URL=postgresql+asyncpg://...` in your `.env`.
+**El patrón es simple y poderoso:**
 
-**Logs:**
+- Metes datos a una lista **aunque no exista todavía**. `POST /waitlists/{slug}/entries` con `slug=launch-2025` crea la waitlist sobre la marcha y guarda el lead. Sin pre-registrar nada.
+- **`entry.data` es JSON libre** — `email`, `name`, `referrer`, o lo que tu landing mande. Sin schema obligatorio, sin migraciones por formulario.
+- **Todo lo que lee** (listar, exportar, CRUD) exige **JWT de admin**. Lo público solo es para escribir leads.
 
-```bash
-docker compose logs -f api
-```
+---
 
-## API Reference
+## 👤 ¿Para quién es?
 
-### Public Endpoints (Turnstile)
+| Quién | Por qué le sirve |
+|-------|------------------|
+| **Indie hackers / founders** | Capturan leads de varias landings en un panel único, sin renovar un SaaS cada mes. |
+| **Equipos pequeños** | Un backend barato (o gratis en Vercel) para validar demanda antes de construir el producto. |
+| **Agencias** | Multiplican landings por cliente y las centralizan en una sola API de leads con export a CSV. |
+| **Quien valore privacidad** | Self-hosted, tus leads son tuyos: SQLite, Postgres o Upstash Redis, tú decides dónde viven. |
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/waitlists/{slug}/entries` | Add a lead. Auto-creates the waitlist if it doesn't exist. |
+---
 
-### Admin Endpoints (JWT)
+## 🛠️ ¿Por qué está construido así?
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/auth/login` | Authenticate. Returns a JWT. |
-| `GET` | `/auth/me` | Current admin profile. |
-| `GET` | `/waitlists` | List all waitlists. |
-| `POST` | `/waitlists` | Create a waitlist manually. |
-| `GET` | `/waitlists/{slug}` | Get waitlist details. |
-| `PATCH` | `/waitlists/{slug}` | Update a waitlist. |
-| `DELETE` | `/waitlists/{slug}` | Soft-delete a waitlist. |
-| `GET` | `/waitlists/{slug}/entries` | List entries (paginated with `skip` and `limit`). |
-| `POST` | `/waitlists/{slug}/entries/export` | Start a background CSV export. Returns a `job_id` (`202`). |
-| `GET` | `/waitlists/{slug}/entries/export/{job_id}/status` | SSE stream with live export progress (0–100%). |
-| `GET` | `/waitlists/{slug}/entries/export/{job_id}/download` | Download the generated CSV file. |
+Los errores más caros en este tipo de sistema son los silenciosos: leads que se pierden, notificaciones que no salen, o un rate-limit que crees haber configurado y no hace nada. El diseño apunta directo a esos tres.
 
-> **Security note:** only `POST /waitlists/{slug}/entries` is exposed publicly, protected by Cloudflare Turnstile.
-> Everything that reads or modifies data (list, export, waitlists CRUD) requires a JWT admin token —
-> the Turnstile check only proves a human browser, so it must never be able to read leads.
+- **Almacenamiento intercambiable (un patrón `Store`).** Toda la lógica habla con una interfaz `Store`, no con SQLAlchemy directamente. `DATABASE_TYPE=sqlite|postgres|redis` elige la implementación en el arranque. Eso permite ir de **SQLite local → Postgres en un VPS → Upstash Redis en Vercel sin tocar servicios ni routers**.
+- **Las notificaciones son background tasks.** Email y webhook se disparan en segundo plano: jamás añaden latencia al `POST /entries` ni rompen la respuesta al cliente si fallan.
+- **Bot protection ≠ autenticación.** Cloudflare Turnstile verifica que hay un humano en el formulario público. El **JWT** protege el panel admin. Dos mecanismos, ninguno mezclado en el mismo endpoint.
+- **Soft-delete, nunca DELETE físico.** Se desactiva (`is_active=false`), no se borra. Porque un "deshacer" o una migración que necesite el historial no deberían ser imposibles.
+- **Rate limiting desde el día 1**, configurable por env var — no como "mejora futura".
+- **Self-hosted real.** Docker multi-stage sin toolchains de build en la imagen final, usuario no-root, `/docs` y admin panel apagados por defecto.
 
-### Async CSV Export
+---
 
-Exports run as background jobs so large waitlists never block the API. The flow:
+## 🧰 Features
 
-1. `POST /waitlists/{slug}/entries/export` (JWT) returns a `job_id` immediately.
-2. `GET .../export/{job_id}/status` (JWT) opens a Server-Sent Events stream that reports progress:
+- **Waitlists auto-creadas.** POST a cualquier slug y la lista nace sola.
+- **Datos libres.** `entry.data` es JSON arbitrario, sin schema forzado.
+- **Turnstile + JWT.** Humano verificado para escribir, admin autenticado para leer.
+- **Notificaciones en background.** Email (SMTP) y webhook, sin bloquear la respuesta.
+- **Export CSV asíncrono con progreso en vivo.** Jobs en segundo plano con barra de progreso (SSE). CSV con BOM UTF-8, columnas aplanadas y sanitización anti inyección.
+- **Rate limiting configurable** en entries y login.
+- **Panel admin React 18 + TS + Tailwind + Vite** servido en `/admin` desde la misma imagen.
+- **SQLite / Postgres / Redis listos.** Ahí es donde quieras correrlo.
+- **Modo demo.** Formulario de captura listo en `/` con botón 🎲 Random.
+- **Multi-stage Dockerfile**, seguridad por defecto, health check, robots.txt.
 
-```
-event: progress
-data: {"job_id":"...","slug":"...","status":"processing","progress":46,"processed":2000,"total":5000}
+---
 
-event: done
-data: {"job_id":"...","slug":"...","status":"done","progress":100,"processed":5000,"total":5000,
-       "download_url":"/waitlists/{slug}/entries/export/{job_id}/download"}
-```
+## 🐛 Evidencias: momentos de fallo y cómo se corrigieron
 
-3. `GET .../export/{job_id}/download` (JWT) serves the finished file.
+> Esta sección documenta bugs y decisiones reales del desarrollo. Es la prueba de que el diseño se endurece con el uso — y de que hay guardarraíles que detectan lo que el ojo no ve.
 
-The CSV is UTF-8 with BOM (opens correctly in Excel), flattens `entry.data` into one column per field,
-and sanitizes cells against CSV formula injection (`=`, `+`, `-`, `@` prefixes are neutralized).
-Jobs expire after `EXPORT_TTL_MINUTES` and their files are cleaned up automatically.
+### 🔴 P0 — Las notificaciones no salían nunca (fallo silencioso)
+`get_store()` es un **async generator**, y se llamaba como si fuera una función normal. El `TypeError` resultante se tragaba en el arranque de la background task → el webhook y el email **jamás se disparaban**, sin error visible para el cliente.
+**El fix:** resolver el store con `await init_store()`.
+**La lección:** un fallo que no rompe la respuesta del usuario es el más peligroso de todos: no lo oyes hasta que el producto "funciona" y no llega nada.
 
-### Health Check
+### 🔴 P0 — Entry a una waitlist "eliminada" crasheaba con 500
+Un `POST /entries` a un slug soft-deleted lanzaba un `500` (`MissingGreenlet`) en lugar de reactivar la lista. La consulta no incluía listas inactivas, y la reactivación no refrescaba el objeto tras el commit.
+**El fix:** buscar con `include_inactive=True` + `await session.refresh(obj)`.
+**La lección:** el soft-delete tenía un caso borde que rompía justo el flujo que debía ser más resiliente (auto-create). Se cerró con test de regresión.
 
-```bash
-curl http://localhost:8000/health
-# {"status":"ok"}
-```
+### 🟠 P1 — El rate limit por env var era config muerta
+`RATE_LIMIT_ENTRIES` / `RATE_LIMIT_LOGIN` estaban definidas en la configuración, pero los decoradores **hardcodeaban** `"10/minute"` / `"5/minute"`. Un operador creía estar subiendo los límites y no hacía nada.
+**El fix:** cablear `get_settings().rate_limit_*` en los decoradores.
+**La lección:** una env var documentada que no se lee es peor que no tenerla — da falsa sensación de control.
 
-### Adding a Lead
+### 🟠 Revertido: un cambio que proponía DELETE físico
+Durante la revisión se detectó (antes de commitear) un cambio que eliminaba físicamente en vez de respetar el soft-delete. Se revirtió. Es un **guardarraíl del proceso de revisión**, no un bug de producción.
 
-The landing page embeds the Turnstile widget (site key) and submits the resulting
-token in the body. When no `TURNSTILE_SECRET_KEY` is configured (dev mode), the
-token is not required.
+> **Estado de verificación:** la suite pasa **82 tests**, `ruff check` limpio y `ruff format --check` en los 64 archivos. Los dos P0 tienen test de regresión que los reactivaría si volvieran a introducirse.
+
+---
+
+## 🚀 Captura un lead (API)
+
+Landing page embebiendo el widget de Turnstile, o en dev sin secretos:
 
 ```bash
 curl -X POST http://localhost:8000/waitlists/launch-2025/entries \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "name": "Alice", "referrer": "twitter", "turnstile_token": "0.<token-from-widget>"}'
+  -d '{"email": "user@example.com", "name": "Alice", "referrer": "twitter"}'
 ```
 
-Response (`201 Created`):
+→ `201 Created` con el lead creado (y la waitlist, si no existía).
 
-```json
-{
-  "id": 1,
-  "waitlist_id": 1,
-  "data": {
-    "email": "user@example.com",
-    "name": "Alice",
-    "referrer": "twitter"
-  },
-  "email": "user@example.com",
-  "referrer": "twitter",
-  "created_at": "2025-07-30T12:00:00Z"
-}
-```
+> ⚠️ Seguridad: solo `POST /entries` es público. **Todo lo que lee o exporta leads requiere JWT de admin** — Turnstile demuestra un humano, jamás autoriza a leer datos.
 
-## Configuration
+---
 
-All settings are driven by environment variables. Copy `.env.example` to `.env` and edit.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_TYPE` | `sqlite` | `sqlite` or `postgres` |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./data/waitlist.db` | SQLAlchemy async connection string |
-| `TURNSTILE_SITE_KEY` | _(empty)_ | Cloudflare Turnstile site key. Used by landing pages (widget), never by the backend |
-| `TURNSTILE_SECRET_KEY` | _(empty)_ | Cloudflare Turnstile secret key for server-side verification. Empty disables verification (dev mode) |
-| `TURNSTILE_ALLOWED_HOSTNAMES` | _(empty)_ | Comma-separated hostnames allowed to submit tokens. Empty skips the origin check |
-| `JWT_SECRET` | `changeme-jwt-secret` | Secret for signing admin JWTs (min 16 chars) |
-| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
-| `JWT_EXPIRE_MINUTES` | `1440` | JWT token lifetime (24 hours) |
-| `ADMIN_EMAIL` | `admin@example.com` | Default admin email (auto-created on startup) |
-| `ADMIN_PASSWORD` | `changeme-admin-password` | Default admin password (min 8 chars) |
-| `ENABLE_DOCS` | `false` | Enable `/docs` and `/redoc` |
-| `ENABLE_ADMIN_PANEL` | `false` | Serve the admin panel at `/admin` |
-| `RATE_LIMIT_ENTRIES` | `10/minute` | Rate limit for `POST /waitlists/{slug}/entries` |
-| `RATE_LIMIT_LOGIN` | `5/minute` | Rate limit for `POST /auth/login` |
-| `SMTP_HOST` | _(empty)_ | SMTP server host for email notifications |
-| `SMTP_PORT` | `587` | SMTP server port |
-| `SMTP_USER` | _(empty)_ | SMTP username |
-| `SMTP_PASSWORD` | _(empty)_ | SMTP password |
-| `SMTP_FROM` | `noreply@example.com` | Sender email address |
-| `NOTIFY_EMAIL_TO` | `admin@example.com` | Recipient for new-lead email notifications |
-| `WEBHOOK_URL` | _(empty)_ | Webhook URL for new-lead notifications |
-| `LOG_LEVEL` | `INFO` | Python log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `LOG_SENSITIVE_REDACT` | `true` | Redact sensitive fields from log output |
-| `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
-| `MAX_REQUEST_BODY_SIZE` | `1048576` | Max request body in bytes (1 MB) |
-| `API_PORT` | `8000` | Host port for the API (Docker only) |
-| `DB_PORT` | `5432` | Host port for PostgreSQL (Docker only) |
-| `EXPORT_DIR` | `data/exports` | Directory for generated CSV files |
-| `EXPORT_TTL_MINUTES` | `60` | Time-to-live for export jobs and files |
-
-See `.env.example` for the full list with comments.
-
-## Deployment
-
-### DockerHub Image
-
-The pre-built image is published at `dcruz04/waitlistgo`:
+## 🧪 Pruébalo local
 
 ```bash
-docker pull dcruz04/waitlistgo:latest
+uv sync
+cp .env.example .env        # o .env.demo para el modo demo
+uv run alembic upgrade head # solo backends SQL; se omite con redis
+uv run uvicorn app.main:app --reload
 ```
 
-### Production with Docker Compose
+### Tests y lint
 
 ```bash
-# SQLite (simplest)
+uv run pytest                  # 82 tests
+uv run ruff check .            # lint
+uv run ruff format .           # formato
+```
+
+---
+
+## 🐳 Despliegue
+
+### Docker (VPS)
+
+```bash
+# SQLite (lo más simple)
 docker compose up -d
 
 # PostgreSQL
 docker compose --profile postgres up -d
 ```
 
-The production compose file uses the `dcruz04/waitlistgo` image directly. The entrypoint runs Alembic migrations automatically before starting the server.
+### Redis + Vercel (sin servidor)
 
-### CI/CD
+Serverless no tiene disco persistente, por eso en Vercel se usa **Upstash Redis**:
 
-The GitHub Actions workflow (`.github/workflows/docker-publish.yml`) handles everything:
+1. Crea una base en [Upstash](https://upstash.com).
+2. Despliega en Vercel y pon estas env vars (usa `.env.demo` como plantilla):
+   - `DATABASE_TYPE=redis`, `REDIS_URL`, `REDIS_TOKEN`
+   - `DEMO_MODE=true` (formulario en `/`), `ADMIN_EMAIL`/`ADMIN_PASSWORD`/`JWT_SECRET`
+3. El demo form vive en `/`, el panel admin en `/admin`.
 
-1. On push to `main` or a `v*` tag, it builds the multi-stage Dockerfile and pushes to DockerHub.
-2. On `main` only, a second job SSHs into the VPS, pulls the new image, and restarts the service.
+> Nota: `EXPORT_DIR` escribe CSV a disco; en funciones serverless ese disco es efímero, así que el export es mejor en despliegues siempre-activos (Docker/VPS).
 
-Tags follow the pattern: `main`, `v1.2.3`, and the short commit SHA.
+El repo trae `vercel.json` y `api/main.py` (wrapper del app FastAPI) listos para el runtime Python de Vercel.
 
-## Admin Panel
+---
 
-The admin panel is a React 18 + TypeScript + Tailwind + Vite app living in `admin-panel/`. When `ENABLE_ADMIN_PANEL=true`, the compiled assets are served at `/admin` from the same Docker image.
+## ⚙️ Configuración
 
-### Routes
+Todas las opciones van por env vars. Copia `.env.example` a `.env` y edítalas.
 
-- `/admin/login` -- Email + password login.
-- `/admin/dashboard` -- Waitlist management (create, edit, soft-delete).
-- `/admin/waitlist/{slug}` -- View entries, export CSV.
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `DATABASE_TYPE` | `sqlite` | `sqlite`, `postgres` o `redis` |
+| `DATABASE_URL` | sqlite local | Cadena async de SQLAlchemy (SQL) |
+| `REDIS_URL` / `REDIS_TOKEN` | — | URL + token Upstash (cuando `DATABASE_TYPE=redis`) |
+| `REDIS_NAMESPACE_ORG` | `waitlistgo` | Prefijo de todas las claves Redis (aislamiento multi-tenant) |
+| `DEMO_MODE` | `false` | Sirve el formulario demo en `/` con botón 🎲 Random |
+| `DEMO_SLUG` | `demo` | Slug al que apunta el formulario demo |
+| `DEMO_TITLE` | `Join the demo waitlist` | Título del formulario demo |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | — | Turnstile humano. Secret vacío = verificación desactivada (dev) |
+| `JWT_SECRET` | `changeme-jwt-secret` | Firma de JWT del admin (mín 16 chars) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | — | Credenciales admin auto-creado |
+| `ENABLE_ADMIN_PANEL` | `false` | Sirve el panel en `/admin` |
+| `ENABLE_DOCS` | `false` | Habilita `/docs` y `/redoc` |
+| `RATE_LIMIT_ENTRIES` | `10/minute` | Rate limit de `POST /entries` |
+| `RATE_LIMIT_LOGIN` | `5/minute` | Rate limit de `POST /auth/login` |
+| `SMTP_*` / `WEBHOOK_URL` | — | Notificaciones (email + webhook) |
+| `MAX_REQUEST_BODY_SIZE` | `1048576` | Tope de body (1 MB) |
+| `EXPORT_DIR` / `EXPORT_TTL_MINUTES` | `data/exports` / `60` | Jobs de export CSV |
 
-### Local Development (Panel Only)
+Ver `.env.example` para la lista completa con comentarios.
 
-```bash
-cd admin-panel
-npm ci
-npm run dev       # Vite dev server at :5173
-npm run build     # Compile for production
-```
+---
 
-## Architecture
+## 🧱 Arquitectura
 
 ```
 waitlistgo/
 ├── app/
-│   ├── api/v1/           # Routers (no business logic)
-│   │   ├── entries.py    #   POST entries, list, CSV export
-│   │   └── waitlists.py  #   CRUD waitlists
-│   ├── auth/             # Turnstile + JWT authentication
-│   │   └── router.py     #   POST /auth/login, GET /auth/me
-│   ├── core/             # Config, logging, middleware
-│   ├── db/               # Async engine, session factory, Base
-│   ├── middleware/        # CORS, rate limiting, security headers, body size
-│   ├── models/           # SQLAlchemy models
-│   ├── schemas/          # Pydantic v2 request/response schemas
-│   ├── services/         # Business logic (turnstile, notifications, admin bootstrap)
-│   └── main.py           # FastAPI app factory
-├── admin-panel/          # React + Vite admin panel
-├── alembic/              # Database migrations
-├── tests/                # pytest-asyncio test suite
-├── .github/workflows/    # CI/CD (Docker build + VPS deploy)
-├── Dockerfile            # Multi-stage (Node builder, Python builder, slim runtime)
-├── docker-compose.yml    # SQLite default + PostgreSQL profile
-├── docker-compose.dev.yml
-└── .env.example          # All environment variables
+│   ├── api/v1/           # Routers (sin lógica de negocio)
+│   ├── auth/             # Turnstile + JWT
+│   ├── repositories/     # Capa de almacenamiento (SQL o Redis)
+│   │   ├── models.py     #   DTOs de dominio
+│   │   ├── protocols.py  #   Interfaz Store/repo
+│   │   ├── sql/          #   SQLite/Postgres
+│   │   └── redis/        #   Upstash Redis
+│   ├── dependencies.py   # init_store() por DATABASE_TYPE
+│   ├── middleware/       # CORS, rate limit, headers, body size
+│   ├── models/           # Modelos SQLAlchemy (backend SQL)
+│   ├── schemas/          # Pydantic v2
+│   ├── services/         # Lógica de negocio
+│   └── main.py           # App factory
+├── api/main.py           # Handler serverless (Vercel)
+├── vercel.json
+├── admin-panel/          # React + Vite
+├── alembic/              # Migraciones (solo backends SQL)
+├── tests/
+├── Dockerfile            # Multi-stage
+├── docker-compose*.yml
+└── .env.example
 ```
 
-## Notifications
+---
 
-Configure `SMTP_*` variables for email and `WEBHOOK_URL` for webhook notifications. `NOTIFY_EMAIL_TO` controls where new-lead alerts are sent.
-
-Notifications are dispatched as background tasks the moment a new entry is created. They never block the POST response, and their failure never causes an error for the client.
-
-## Development
-
-### Tests
-
-```bash
-uv run pytest                  # run all
-uv run pytest -v               # verbose
-uv run pytest --cov=app        # with coverage
-```
-
-### Lint and Format
-
-```bash
-uv run ruff check .            # lint
-uv run ruff format .           # auto-format
-```
-
-### Database Migrations
-
-```bash
-uv run alembic revision --autogenerate -m "description"
-uv run alembic upgrade head
-uv run alembic downgrade -1
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on reporting issues, suggesting features, and submitting pull requests.
-
-## License
+## 📜 Licencia
 
 [MIT](LICENSE)
