@@ -1,0 +1,20 @@
+# Exclude from Vercel deploy upload (before build). These are rebuilt/installed
+# during the build step or not needed at runtime, and would otherwise bloat the
+# upload and the Python function bundle.
+.venv/
+.omo/
+.pytest_cache/
+.ruff_cache/
+.claude/
+.codex/
+.cursor/
+.kombai/
+.impeccable/
+data/
+docs/
+*.db
+*.sqlite3
+
+# admin-panel node_modules is installed via `npm ci` in buildCommand.
+# admin-panel/dist is NOT ignored here — it is produced by buildCommand and is
+# served by the FastAPI function from the bundled admin-panel/dist directory.

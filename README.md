@@ -178,7 +178,7 @@ Serverless no tiene disco persistente, por eso en Vercel se usa **Upstash Redis*
 
 > Nota: `EXPORT_DIR` escribe CSV a disco; en funciones serverless ese disco es efímero, así que el export es mejor en despliegues siempre-activos (Docker/VPS).
 
-El repo trae `vercel.json` y `api/main.py` (wrapper del app FastAPI) listos para el runtime Python de Vercel.
+El repo trae `vercel.json` listo para el runtime Python de Vercel: el `buildCommand` compila el panel admin (`admin-panel/dist`) y el app FastAPI (`app/main.py`) sirve `/admin` desde ese bundle, igual que en Docker. `api/main.py` queda como wrapper opcional para otros targets.
 
 ---
 
