@@ -13,6 +13,7 @@ from app.middleware.rate_limit import limiter
 from app.repositories.models import EntryData
 from app.schemas.entry import EntryRead, PaginatedEntries
 from app.services.entry import list_entries
+from app.services.export import ExportUnavailableError
 
 router = APIRouter(
     prefix="/waitlists/{slug}/entries",
@@ -60,6 +61,11 @@ async def trigger_export(
     manager = request.app.state.export_manager
     try:
         job = await manager.start_export(slug)
+    except ExportUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from None
     except LookupError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

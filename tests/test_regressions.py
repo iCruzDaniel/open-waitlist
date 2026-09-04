@@ -81,6 +81,33 @@ async def test_notify_new_entry_resolves_store_and_sends_webhook(monkeypatch) ->
     reset_store_for_tests()
 
 
+async def test_export_unavailable_when_filesystem_readonly(monkeypatch, tmp_path) -> None:
+    """Regression: on a read-only filesystem (serverless/Vercel) the app must boot
+    and start_export must fail with a clear error instead of crashing with OSError."""
+    from app.services.export import ExportJobManager, ExportUnavailableError
+
+    store = await _fresh_store(monkeypatch)
+
+    # Simulate a read-only filesystem: make an intermediate path component a
+    # regular file, so mkdir(parents=True) fails to descend through it.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("file", encoding="utf-8")
+    readonly_dir = blocker / "exports"
+    manager = ExportJobManager(export_dir=readonly_dir, ttl_minutes=60, store=store)
+
+    assert manager._writable is False
+
+    with pytest.raises(ExportUnavailableError):
+        await manager.start_export("exp")
+
+    # _sweep must be a no-op (not raise) when the FS is read-only.
+    await manager._sweep()
+
+    await close_store()
+    await _engine.dispose()
+    reset_store_for_tests()
+
+
 async def test_entry_post_reactivates_soft_deleted_waitlist(monkeypatch) -> None:
     """Regression: create_entry used get_by_slug (inactive filtered by default), so a
     POST to a soft-deleted slug created a duplicate waitlist instead of reactivating."""

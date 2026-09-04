@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from app.repositories.protocols import Store
 
 
+class ExportUnavailableError(RuntimeError):
+    """Raised when CSV export cannot be used (e.g. read-only filesystem in serverless)."""
+
+
 @dataclass
 class ExportJob:
     job_id: str
@@ -42,8 +46,25 @@ class ExportJobManager:
         self.ttl_minutes = ttl_minutes
         self._store = store
         self._jobs: dict[str, ExportJob] = {}
+        # Detect whether the export dir is actually writable. Serverless
+        # runtimes (Vercel) have a read-only filesystem, so fails gracefully if not.
+        self._writable: bool = False
+        try:
+            export_dir.mkdir(parents=True, exist_ok=True)
+            probe = export_dir / ".write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            self._writable = True
+        except OSError:
+            self._writable = False
 
     async def start_export(self, slug: str) -> ExportJob:
+        if not self._writable:
+            raise ExportUnavailableError(
+                "CSV export is not available in this environment (read-only filesystem). "
+                "Use an always-on deployment (Docker/VPS) for exports."
+            )
+
         # Ensure export directory exists
         self.export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -167,6 +188,8 @@ class ExportJobManager:
             job.condition.notify_all()
 
     async def _sweep(self) -> None:
+        if not self._writable:
+            return
         cutoff = datetime.now() - timedelta(minutes=self.ttl_minutes)
         to_remove = [job_id for job_id, job in self._jobs.items() if job.created_at < cutoff]
         for job_id in to_remove:

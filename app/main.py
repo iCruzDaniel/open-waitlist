@@ -43,7 +43,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ttl_minutes=settings.export_ttl_minutes,
         store=store,
     )
-    app.state.export_manager.export_dir.mkdir(parents=True, exist_ok=True)
     await app.state.export_manager._sweep()
 
     yield
