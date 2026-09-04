@@ -73,8 +73,22 @@ def create_app() -> FastAPI:
 
     # --- Admin panel (optional) ---
     if settings.enable_admin_panel:
-        admin_dist = Path(__file__).resolve().parent.parent / "admin-panel" / "dist"
-        if admin_dist.is_dir():
+        root = Path(__file__).resolve().parent.parent
+        # Priority: on Docker/local the built panel lives at admin-panel/dist;
+        # on Vercel the installCommand copies it into api/admin-dist (inside the
+        # bundled function tree). Try each candidate until one exists.
+        admin_dist = next(
+            (
+                p
+                for p in (
+                    root / "admin-panel" / "dist",
+                    root / "api" / "admin-dist",
+                )
+                if p.is_dir()
+            ),
+            None,
+        )
+        if admin_dist is not None:
             app.mount("/admin", StaticFiles(directory=str(admin_dist), html=True), name="admin")
         else:
             logger.warning(
