@@ -9,43 +9,33 @@
 </p>
 
 <p align="center">
-  <a href="https://img.shields.io/badge/Python-3.12+-00D2B8?logo=python&logoColor=white"><img src="https://img.shields.io/badge/Python-3.12+-00D2B8?logo=python&logoColor=white" alt="Python 3.12+"></a>
-  <a href="https://img.shields.io/badge/FastAPI-0.115-00D2B8?logo=fastapi&logoColor=white"><img src="https://img.shields.io/badge/FastAPI-0.115-00D2B8?logo=fastapi&logoColor=white" alt="FastAPI 0.115"></a>
-  <a href="https://img.shields.io/badge/React-18-00D2B8?logo=react&logoColor=white"><img src="https://img.shields.io/badge/React-18-00D2B8?logo=react&logoColor=white" alt="React 18"></a>
-  <a href="https://img.shields.io/github/license/iCruzDaniel/open-waitlist"><img src="https://img.shields.io/github/license/iCruzDaniel/open-waitlist" alt="License"></a>
-  <a href="https://img.shields.io/docker/v/dcruz04/waitlistgo?color=00D2B8"><img src="https://img.shields.io/docker/v/dcruz04/waitlistgo?color=00D2B8" alt="Docker Version"></a>
-  <a href="https://img.shields.io/docker/pulls/dcruz04/waitlistgo?color=00D2B8"><img src="https://img.shields.io/docker/pulls/dcruz04/waitlistgo?color=00D2B8" alt="Docker Pulls"></a>
-  <a href="https://img.shields.io/github/actions/workflow/status/iCruzDaniel/open-waitlist/docker-publish.yml?color=00D2B8"><img src="https://img.shields.io/github/actions/workflow/status/iCruzDaniel/open-waitlist/docker-publish.yml?color=00D2B8" alt="CI Status"></a>
-  <a href="https://img.shields.io/github/v/release/iCruzDaniel/open-waitlist?color=00D2B8"><img src="https://img.shields.io/github/v/release/iCruzDaniel/open-waitlist?color=00D2B8" alt="Release"></a>
-  <a href="https://img.shields.io/badge/PRs-welcome-00D2B8"><img src="https://img.shields.io/badge/PRs-welcome-00D2B8" alt="PRs Welcome"></a>
+  <img src="https://img.shields.io/badge/Python-3.12+-00D2B8?logo=python&logoColor=white" alt="Python 3.12+" style="height: 28px">
+  <img src="https://img.shields.io/badge/FastAPI-0.115-00D2B8?logo=fastapi&logoColor=white" alt="FastAPI 0.115" style="height: 28px">
+  <img src="https://img.shields.io/badge/React-18-00D2B8?logo=react&logoColor=white" alt="React 18" style="height: 28px">
+  <img src="https://img.shields.io/github/license/iCruzDaniel/open-waitlist" alt="License" style="height: 28px">
+  <img src="https://img.shields.io/docker/v/dcruz04/waitlistgo?color=00D2B8" alt="Docker Version" style="height: 28px">
+  <img src="https://img.shields.io/docker/pulls/dcruz04/waitlistgo?color=00D2B8" alt="Docker Pulls" style="height: 28px">
+  <img src="https://img.shields.io/github/actions/workflow/status/iCruzDaniel/open-waitlist/docker-publish.yml?color=00D2B8" alt="CI Status" style="height: 28px">
+  <img src="https://img.shields.io/github/v/release/iCruzDaniel/open-waitlist?color=00D2B8" alt="Release" style="height: 28px">
+  <img src="https://img.shields.io/badge/PRs-welcome-00D2B8" alt="PRs Welcome" style="height: 28px">
 </p>
 
 ---
 
-## 🎯 Pruébalo en segundos (no hace falta configurar nada)
+## 🎯 Pruébalo en segundos
 
-¿Quieres ver qué hace sin leer más? Deja que OpenWaitlist se muestre solo.
+Pruébalo ahora mismo **sin instalar nada** — está en vivo en Vercel:
 
-**Modo demo (1 minuto):** sirve un formulario de leads en `/` con un botón **🎲 Random** que rellena datos realistas en un clic. Captura leads → míralos crecer en el panel admin.
-
-```bash
-cp .env.demo .env          # config demo lista (Redis + modo demo + admin panel)
-uv sync
-uv run uvicorn app.main:app --reload
-```
-
-Abre **http://localhost:8000** → pulsa **🎲 Random → Join waitlist** un par de veces → entra en **http://localhost:8000/admin** y verás los leads que acabas de capturar. Listo. 🎉
-
-> 🔥 **¿En Vercel?** Pruébalo **en vivo** — sin instalar nada:
->
 > | Demo | Link | Qué verás |
 > |------|------|-----------|
-> | **Formulario demo** | [open-waitlist-one.vercel.app](https://open-waitlist-one.vercel.app) | Captura de leads en `/` con botón 🎲 Random |
-> | **Panel admin** | [open-waitlist-one.vercel.app/admin](https://open-waitlist-one.vercel.app/admin?email=admin%40demo.com&pass=elAdmin123) | Login con credenciales **autorellenadas** 🪄 — solo pulsa **Sign in** y verás los leads capturados |
+> | **Formulario demo** | [open-waitlist-one.vercel.app](https://open-waitlist-one.vercel.app) | Captura leads en `/` con un botón **🎲 Random** que rellena datos realistas en un clic |
+> | **Panel admin** | [open-waitlist-one.vercel.app/admin](https://open-waitlist-one.vercel.app/admin?email=admin%40demo.com&pass=elAdmin123) | Login con credenciales **autorellenadas** 🪄 — solo pulsa **Sign in** y mira los leads crecer |
 >
 > **Credenciales de prueba:** `admin@demo.com` / `elAdmin123` (el link del panel ya viene pre-rellenado).
 
-> 🔥 **¿En Vercel?** OpenWaitlist corre sin servidor con Upstash Redis — sin disco, sin contenedor. Los pasos están en [Despliegue](#despliegue).
+**Modo demo (1 minuto):** el formulario de `/` captura leads hacia una waitlist, y en el panel admin los ves listados y exportables. Eso es todo — el resto de este README es cómo customizarlo.
+
+> 🔥 **¿En Vercel?** Corre sin servidor con Upstash Redis — sin disco, sin contenedor. Los pasos de despliegue y el setup local están detallados más abajo en [Despliegue](#despliegue).
 
 ---
 
