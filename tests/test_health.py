@@ -11,7 +11,16 @@ async def test_health_returns_ok() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    # Safe deployment diagnostics (no secrets): whether the admin panel flag is
+    # on and which dist paths exist in the runtime filesystem.
+    diag = body["admin_panel"]
+    assert isinstance(diag["enabled"], bool)
+    assert isinstance(diag["dist_found"], bool)
+    assert isinstance(diag["dist_paths"], list)
+    # dist_found must be consistent with the resolved paths.
+    assert diag["dist_found"] == bool(diag["dist_paths"])
 
 
 @pytest.mark.anyio

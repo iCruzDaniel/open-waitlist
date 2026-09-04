@@ -15,12 +15,14 @@ from app.repositories.sql.store import SQLStore
 
 
 def test_demo_html_has_fill_button() -> None:
-    html = (Path(__file__).resolve().parent.parent / "app" / "demo" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    demo_dir = Path(__file__).resolve().parent.parent / "app" / "demo"
+    html = (demo_dir / "index.html").read_text(encoding="utf-8")
     assert "fill-btn" in html
     assert "__SLUG__" in html  # placeholder for runtime substitution
-    assert "/waitlists/" in html
+    assert 'src="/demo.js"' in html  # external script (CSP blocks inline JS)
+    # The submission logic lives in the external, same-origin script.
+    js = (demo_dir / "demo.js").read_text(encoding="utf-8")
+    assert "/waitlists/" in js
 
 
 @pytest.fixture

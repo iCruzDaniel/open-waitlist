@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -77,35 +77,47 @@ def create_app() -> FastAPI:
         # Priority: on Docker/local the built panel lives at admin-panel/dist;
         # on Vercel the installCommand copies it into api/admin-dist (inside the
         # bundled function tree). Try each candidate until one exists.
-        admin_dist = next(
-            (
-                p
-                for p in (
-                    root / "admin-panel" / "dist",
-                    root / "api" / "admin-dist",
-                )
-                if p.is_dir()
-            ),
-            None,
+        candidates = (
+            root / "admin-panel" / "dist",
+            root / "api" / "admin-dist",
         )
+        available = [str(p) for p in candidates if p.is_dir()]
+        admin_dist = Path(available[0]) if available else None
         if admin_dist is not None:
             app.mount("/admin", StaticFiles(directory=str(admin_dist), html=True), name="admin")
         else:
             logger.warning(
                 "Admin panel enabled but dist/ not found — run 'npm run build' in admin-panel/",
             )
+    else:
+        available = []
+    app.state.admin_panel_diagnostics = {
+        "enabled": settings.enable_admin_panel,
+        "dist_found": bool(available),
+        "dist_paths": available,
+    }
 
     # --- Demo form (optional) ---
     if settings.demo_mode:
-        demo_path = Path(__file__).resolve().parent / "demo" / "index.html"
-        if demo_path.is_file():
-            demo_html = demo_path.read_text(encoding="utf-8").replace(
+        demo_dir = Path(__file__).resolve().parent / "demo"
+        demo_index = demo_dir / "index.html"
+        if demo_index.is_file():
+            demo_html = demo_index.read_text(encoding="utf-8").replace(
                 "__SLUG__", settings.demo_slug
             )
 
             @app.get("/", include_in_schema=False)
             async def demo() -> HTMLResponse:
                 return HTMLResponse(demo_html)
+
+            # External script: strict CSP (script-src 'self') blocks inline JS.
+            demo_js = demo_dir / "demo.js"
+            if demo_js.is_file():
+                js_bytes = demo_js.read_bytes()
+
+                @app.get("/demo.js", include_in_schema=False)
+                async def demo_script() -> Response:
+                    return Response(content=js_bytes, media_type="application/javascript")
 
             logger.info("Demo mode enabled — form mounted at / (slug=%s)", settings.demo_slug)
         else:
@@ -133,7 +145,12 @@ def create_app() -> FastAPI:
     # --- Routes ---
     @app.get("/health")
     async def health() -> JSONResponse:
-        return JSONResponse({"status": "ok"})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "admin_panel": getattr(app.state, "admin_panel_diagnostics", {}),
+            }
+        )
 
     @app.get("/robots.txt", include_in_schema=False)
     async def robots() -> PlainTextResponse:
