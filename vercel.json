@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "cd admin-panel && npm ci && npm run build",
+  "installCommand": "cd admin-panel && npm ci && npm run build",
   "functions": {
     "api/main.py": {
       "excludeFiles": "{admin-panel/node_modules/**,tests/**,.venv/**,data/**,.omo/**,**/__pycache__/**,.git/**,docs/**,.github/**,.claude/**,.codex/**,.cursor/**,.kombai/**,.impeccable/**,alembic/**,*.db,*.sqlite3}"
