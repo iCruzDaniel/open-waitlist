@@ -6,8 +6,8 @@ from email.mime.text import MIMEText
 import httpx
 
 from app.config import get_settings
-from app.database import _SessionFactory
-from app.models.entry import Entry
+from app.dependencies import init_store
+from app.repositories.models import EntryData
 
 logger = logging.getLogger(__name__)
 
@@ -15,42 +15,45 @@ logger = logging.getLogger(__name__)
 async def notify_new_entry(entry_id: int) -> None:
     """Dispatch email and webhook notifications for a new entry.
 
-    Runs as a FastAPI BackgroundTask — creates its own DB session so it's
-    fully independent of the request lifecycle. Failures are logged but
-    never propagated.
+    Runs as a FastAPI BackgroundTask — resolves the cached global store (via
+    ``init_store``) so it's fully independent of the request lifecycle.
+    Failures are logged but never propagated.
     """
-    async with _SessionFactory() as session:
-        entry = await session.get(Entry, entry_id)
-        if entry is None:
-            logger.warning("notify_new_entry: entry %d not found", entry_id)
-            return
+    try:
+        store = await init_store()
+    except Exception:
+        logger.warning("notify_new_entry: store unavailable, aborting")
+        return
 
-        settings = get_settings()
+    entry = await store.entries.get(entry_id)
+    if entry is None:
+        logger.warning("notify_new_entry: entry %d not found", entry_id)
+        return
 
-        if settings.notify_email_to and not entry.notified_email:
-            try:
-                await _send_email(settings, entry)
-                entry.notified_email = True
-                logger.info(
-                    "Email sent to %s for entry %d",
-                    settings.notify_email_to,
-                    entry.id,
-                )
-            except Exception:
-                logger.exception("Failed to send email for entry %d", entry.id)
+    settings = get_settings()
 
-        if settings.webhook_url and not entry.notified_webhook:
-            try:
-                await _send_webhook(settings, entry)
-                entry.notified_webhook = True
-                logger.info("Webhook sent for entry %d", entry.id)
-            except Exception:
-                logger.exception("Failed to send webhook for entry %d", entry.id)
+    if settings.notify_email_to and not entry.notified_email:
+        try:
+            await _send_email(settings, entry)
+            await store.entries.mark_email_notified(entry.id)
+            logger.info(
+                "Email sent to %s for entry %d",
+                settings.notify_email_to,
+                entry.id,
+            )
+        except Exception:
+            logger.exception("Failed to send email for entry %d", entry.id)
 
-        await session.commit()
+    if settings.webhook_url and not entry.notified_webhook:
+        try:
+            await _send_webhook(settings, entry)
+            await store.entries.mark_webhook_notified(entry.id)
+            logger.info("Webhook sent for entry %d", entry.id)
+        except Exception:
+            logger.exception("Failed to send webhook for entry %d", entry.id)
 
 
-async def _send_email(settings, entry: Entry) -> None:
+async def _send_email(settings, entry: EntryData) -> None:
     """Send notification email via SMTP."""
     subject = f"New waitlist entry #{entry.id}"
     body = (
@@ -87,7 +90,7 @@ async def _send_email(settings, entry: Entry) -> None:
         )
 
 
-async def _send_webhook(settings, entry: Entry) -> None:
+async def _send_webhook(settings, entry: EntryData) -> None:
     """POST entry payload to the configured webhook URL."""
     payload = {
         "event": "entry.created",

@@ -89,13 +89,15 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 EXPOSE 8000
 
-# Entrypoint: run migrations, ensure /app/data is writable, drop privileges
+# Entrypoint: run migrations (unless Redis), ensure /app/data is writable, drop privileges
 COPY <<"EOF" /entrypoint.sh
 #!/bin/bash
 set -e
 mkdir -p /app/data
 chown openwaitlist:openwaitlist /app/data
-gosu openwaitlist alembic upgrade head
+if [ "$DATABASE_TYPE" != "redis" ]; then
+  gosu openwaitlist alembic upgrade head
+fi
 exec gosu openwaitlist "$@"
 EOF
 RUN chmod +x /entrypoint.sh

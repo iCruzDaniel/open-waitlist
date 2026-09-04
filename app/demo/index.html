@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenWaitlist Demo</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2e;
+      --border: #23304a;
+      --accent: #00d2b8;
+      --text: #e6edf7;
+      --muted: #8fa3bf;
+      --danger: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #132344 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .brand .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+    }
+    .brand span { font-weight: 700; letter-spacing: 0.02em; }
+    h1 { font-size: 22px; margin: 8px 0 4px; }
+    .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; line-height: 1.5; }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    input {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0d1526;
+      color: var(--text);
+      font-size: 14px;
+    }
+    input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .row { display: flex; gap: 10px; }
+    .row input { flex: 1; }
+    .fill {
+      margin-left: auto;
+      align-self: flex-end;
+      width: auto;
+      padding: 11px 14px;
+    }
+    button[type="submit"] {
+      width: 100%;
+      margin-top: 22px;
+      padding: 13px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #00a88f);
+      color: #06241f;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
+    .fill {
+      background: #1a2942;
+      color: var(--text);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .fill:hover { border-color: var(--accent); }
+    .msg { margin-top: 16px; font-size: 14px; min-height: 20px; }
+    .msg.ok { color: var(--accent); }
+    .msg.err { color: var(--danger); }
+    .note { margin-top: 18px; font-size: 12px; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="dot"></span><span>OpenWaitlist</span></div>
+    <h1>Join the demo waitlist</h1>
+    <p class="sub">This is a demo form. Use "Fill random data" to generate a lead instantly, or type your own.</p>
+
+    <form id="lead-form">
+      <label for="name">Name</label>
+      <input id="name" name="name" placeholder="Jane Doe" autocomplete="off" />
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" placeholder="jane@example.com" autocomplete="off" />
+
+      <div class="row">
+        <div style="flex:1">
+          <label for="company">Company</label>
+          <input id="company" name="company" placeholder="Acme Inc" autocomplete="off" />
+        </div>
+        <button type="button" class="fill" id="fill-btn" title="Generate random data">🎲 Random</button>
+      </div>
+
+      <button type="submit" id="submit-btn">Join waitlist</button>
+      <div class="msg" id="msg"></div>
+    </form>
+
+    <p class="note">Form submissions are stored via the waitlist API backend.</p>
+  </div>
+
+  <script>
+    const SLUG = "__SLUG__";
+    const EMAIL_DOMAINS = ["gmail.com", "outlook.com", "proton.me", "hey.com", "company.io", "startup.dev"];
+    const FIRST = ["Ana", "Luis", "María", "Carlos", "Elena", "Jorge", "Lucía", "Diego", "Sofía", "Andrés", "Valentina", "Mateo"];
+    const LAST = ["García", "Rodríguez", "Martínez", "López", "Hernández", "González", "Pérez", "Sánchez", "Ramírez", "Torres", "Flores", "Rivera"];
+    const COMPANIES = ["Acme", "Globex", "Initech", "Umbrella", "Stark", "Wayne", "Hooli", "Pied Piper", "Nimbus", "Brightpath", "Cloudline", "Atomica"];
+    const REFERRERS = ["twitter", "linkedin", "google", "facebook", "instagram", "friend", "newsletter", "podcast"];
+
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+    function randomEmail(name) {
+      const base = name.toLowerCase().replace(/[^a-z]/g, "").slice(0, 8);
+      return base + Math.floor(100 + Math.random() * 900) + "@" + pick(EMAIL_DOMAINS);
+    }
+
+    function randomData() {
+      const first = pick(FIRST);
+      const last = pick(LAST);
+      const name = first + " " + last;
+      const email = randomEmail(first + last);
+      const company = pick(COMPANIES);
+      const role = pick(["Founder", "Engineer", "Product Manager", "Marketer", "Designer", "CTO"]);
+      return { name, email, company, role, referrer: pick(REFERRERS) };
+    }
+
+    function fillForm() {
+      const d = randomData();
+      document.getElementById("name").value = d.name;
+      document.getElementById("email").value = d.email;
+      document.getElementById("company").value = d.company + " · " + d.role;
+      document.getElementById("msg").textContent = "";
+      document.getElementById("msg").className = "msg";
+    }
+
+    document.getElementById("fill-btn").addEventListener("click", fillForm);
+
+    document.getElementById("lead-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("submit-btn");
+      const msg = document.getElementById("msg");
+      btn.disabled = true;
+      msg.textContent = "Submitting…";
+      msg.className = "msg";
+
+      const data = {
+        name: document.getElementById("name").value,
+        email: document.getElementById("email").value,
+        company: document.getElementById("company").value,
+      };
+      if (data.email) data.referrer = "demo-form";
+
+      try {
+        const res = await fetch("/waitlists/" + SLUG + "/entries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          msg.textContent = "Error: " + (body.detail || res.statusText);
+          msg.className = "msg err";
+          return;
+        }
+        msg.textContent = "🎉 You're on the list! Check the admin panel.";
+        msg.className = "msg ok";
+        document.getElementById("lead-form").reset();
+      } catch (err) {
+        msg.textContent = "Network error: " + err.message;
+        msg.className = "msg err";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

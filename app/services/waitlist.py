@@ -1,68 +1,42 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
 
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
-from app.models.waitlist import Waitlist
+from app.repositories.models import WaitlistData
 from app.schemas.waitlist import WaitlistCreate, WaitlistUpdate
 
 
-async def list_waitlists(
-    session: AsyncSession, *, include_inactive: bool = False
-) -> list[Waitlist]:
-    query = select(Waitlist).options(selectinload(Waitlist.entries))
-    if not include_inactive:
-        query = query.where(Waitlist.is_active.is_(True))
-    query = query.order_by(Waitlist.created_at.desc())
-    result = await session.execute(query)
-    return list(result.scalars().all())
+@dataclass
+class WaitlistResult:
+    waitlist: WaitlistData | None
+    conflict: bool = False
+
+
+async def list_waitlists(store, *, include_inactive: bool = False) -> list[WaitlistData]:
+    return await store.waitlists.list(include_inactive=include_inactive)
 
 
 async def get_waitlist_by_slug(
-    session: AsyncSession, slug: str, *, include_inactive: bool = False
-) -> Waitlist | None:
-    query = select(Waitlist).options(selectinload(Waitlist.entries))
-    if not include_inactive:
-        query = query.where(Waitlist.is_active.is_(True))
-    query = query.where(Waitlist.slug == slug)
-    result = await session.execute(query)
-    return result.scalar_one_or_none()
+    store, slug: str, *, include_inactive: bool = False
+) -> WaitlistData | None:
+    return await store.waitlists.get_by_slug(slug, include_inactive=include_inactive)
 
 
-async def create_waitlist(session: AsyncSession, payload: WaitlistCreate) -> Waitlist:
-    wl = Waitlist(
+async def create_waitlist(store, payload: WaitlistCreate) -> WaitlistData:
+    return await store.waitlists.create(
         slug=payload.slug,
         title=payload.title,
         description=payload.description,
     )
-    session.add(wl)
-    await session.commit()
-    await session.refresh(wl)
-    return wl
 
 
-async def update_waitlist(
-    session: AsyncSession, slug: str, payload: WaitlistUpdate
-) -> Waitlist | None:
-    values = payload.model_dump(exclude_unset=True)
-    if not values:
-        return await get_waitlist_by_slug(session, slug)
-
-    await session.execute(
-        update(Waitlist).where(Waitlist.slug == slug, Waitlist.is_active.is_(True)).values(**values)
+async def update_waitlist(store, slug: str, payload: WaitlistUpdate) -> WaitlistData | None:
+    return await store.waitlists.update(
+        slug,
+        title=payload.title if payload.title is not None else None,
+        description=payload.description if payload.description is not None else None,
     )
-    await session.commit()
-    return await get_waitlist_by_slug(session, slug)
 
 
-async def soft_delete_waitlist(session: AsyncSession, slug: str) -> Waitlist | None:
-    wl = await get_waitlist_by_slug(session, slug)
-    if wl is None:
-        return None
-    wl.is_active = False
-    wl.deleted_at = datetime.now(UTC)
-    await session.commit()
-    return wl
+async def soft_delete_waitlist(store, slug: str) -> WaitlistData | None:
+    return await store.waitlists.soft_delete(slug)

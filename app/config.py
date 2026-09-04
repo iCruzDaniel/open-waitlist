@@ -13,10 +13,24 @@ class Settings(BaseSettings):
     )
 
     # --- Database ---
-    database_type: Literal["sqlite", "postgres"] = "sqlite"
+    database_type: Literal["sqlite", "postgres", "redis"] = "sqlite"
     database_url: str = Field(
         default="sqlite+aiosqlite:///./data/waitlist.db",
-        description="SQLAlchemy async database URL",
+        description="SQLAlchemy async database URL (used when database_type is sqlite|postgres)",
+    )
+
+    # Redis backend (database_type == "redis")
+    redis_url: str = Field(
+        default="",
+        description="Upstash Redis REST URL (https://...). Used when database_type == 'redis'.",
+    )
+    redis_token: str = Field(
+        default="",
+        description="Upstash Redis REST token. Used when database_type == 'redis'.",
+    )
+    redis_namespace_org: str = Field(
+        default="waitlistgo",
+        description="Organization namespace prefixing every Redis key (multi-tenant isolation).",
     )
 
     # --- Bot protection (Cloudflare Turnstile) ---
@@ -42,6 +56,11 @@ class Settings(BaseSettings):
     enable_admin_panel: bool = False
     admin_email: str = "admin@example.com"
     admin_password: str = Field(default="changeme-admin-password", min_length=8)
+
+    # --- Demo mode ---
+    demo_mode: bool = False
+    demo_slug: str = "demo"
+    demo_title: str = "Join the demo waitlist"
 
     # --- Docs ---
     enable_docs: bool = False

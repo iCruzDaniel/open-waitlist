@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -16,7 +16,7 @@ from app.api.v1.waitlists import router as waitlists_router
 from app.auth.router import router as auth_router
 from app.auth.service import bootstrap_admin
 from app.config import get_settings
-from app.database import _SessionFactory, dispose_engine, wait_for_db
+from app.dependencies import close_store, init_store, wait_for_db
 from app.middleware.cors import configure_cors
 from app.middleware.rate_limit import limiter
 from app.middleware.security import (
@@ -31,19 +31,23 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    await wait_for_db()
-    async with _SessionFactory() as session:
-        await bootstrap_admin(session)
     settings = get_settings()
+
+    await wait_for_db(app)
+    store = await init_store()
+    app.state.store = store
+    await bootstrap_admin(store)
+
     app.state.export_manager = ExportJobManager(
         export_dir=Path(settings.export_dir),
         ttl_minutes=settings.export_ttl_minutes,
-        session_factory=_SessionFactory,
+        store=store,
     )
     app.state.export_manager.export_dir.mkdir(parents=True, exist_ok=True)
     await app.state.export_manager._sweep()
+
     yield
-    await dispose_engine()
+    await close_store()
 
 
 def create_app() -> FastAPI:
@@ -77,6 +81,22 @@ def create_app() -> FastAPI:
             logger.warning(
                 "Admin panel enabled but dist/ not found — run 'npm run build' in admin-panel/",
             )
+
+    # --- Demo form (optional) ---
+    if settings.demo_mode:
+        demo_path = Path(__file__).resolve().parent / "demo" / "index.html"
+        if demo_path.is_file():
+            demo_html = demo_path.read_text(encoding="utf-8").replace(
+                "__SLUG__", settings.demo_slug
+            )
+
+            @app.get("/", include_in_schema=False)
+            async def demo() -> HTMLResponse:
+                return HTMLResponse(demo_html)
+
+            logger.info("Demo mode enabled — form mounted at / (slug=%s)", settings.demo_slug)
+        else:
+            logger.warning("Demo mode enabled but demo/index.html not found")
 
     # --- Docs (local Swagger UI / ReDoc assets, CSP-compatible) ---
     if settings.enable_docs:

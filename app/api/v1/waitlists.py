@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.router import require_admin
-from app.database import get_session
+from app.dependencies import StoreDep
+from app.repositories.models import WaitlistData
 from app.schemas.waitlist import WaitlistCreate, WaitlistRead, WaitlistUpdate
 from app.services.waitlist import (
     create_waitlist,
@@ -17,7 +17,7 @@ from app.services.waitlist import (
 router = APIRouter(prefix="/waitlists", tags=["waitlists"], dependencies=[Depends(require_admin)])
 
 
-def _waitlist_to_read(wl, entry_count: int = 0) -> WaitlistRead:
+def _waitlist_to_read(wl: WaitlistData) -> WaitlistRead:
     return WaitlistRead(
         id=wl.id,
         slug=wl.slug,
@@ -26,24 +26,24 @@ def _waitlist_to_read(wl, entry_count: int = 0) -> WaitlistRead:
         is_active=wl.is_active,
         created_at=wl.created_at,
         updated_at=wl.updated_at,
-        entry_count=len(wl.entries) if hasattr(wl, "entries") else entry_count,
+        entry_count=wl.entry_count,
     )
 
 
 @router.get("", response_model=list[WaitlistRead])
 async def list_all(
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep,
 ) -> list[WaitlistRead]:
-    waitlists = await list_waitlists(session)
+    waitlists = await list_waitlists(store)
     return [_waitlist_to_read(wl) for wl in waitlists]
 
 
 @router.get("/{slug}", response_model=WaitlistRead)
 async def get_one(
     slug: str,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep,
 ) -> WaitlistRead:
-    wl = await get_waitlist_by_slug(session, slug, include_inactive=True)
+    wl = await get_waitlist_by_slug(store, slug, include_inactive=True)
     if wl is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -55,15 +55,15 @@ async def get_one(
 @router.post("", response_model=WaitlistRead, status_code=status.HTTP_201_CREATED)
 async def create(
     payload: WaitlistCreate,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep,
 ) -> WaitlistRead:
-    existing = await get_waitlist_by_slug(session, payload.slug, include_inactive=True)
+    existing = await get_waitlist_by_slug(store, payload.slug, include_inactive=True)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A waitlist with this slug already exists",
         )
-    wl = await create_waitlist(session, payload)
+    wl = await create_waitlist(store, payload)
     return _waitlist_to_read(wl)
 
 
@@ -71,9 +71,9 @@ async def create(
 async def update(
     slug: str,
     payload: WaitlistUpdate,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep,
 ) -> WaitlistRead:
-    wl = await update_waitlist(session, slug, payload)
+    wl = await update_waitlist(store, slug, payload)
     if wl is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -85,9 +85,9 @@ async def update(
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete(
     slug: str,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep,
 ) -> None:
-    wl = await soft_delete_waitlist(session, slug)
+    wl = await soft_delete_waitlist(store, slug)
     if wl is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

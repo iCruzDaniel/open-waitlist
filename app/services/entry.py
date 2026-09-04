@@ -1,75 +1,62 @@
 from __future__ import annotations
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.entry import Entry
-from app.models.waitlist import Waitlist
+from app.repositories.models import EntryData, EntryPageData
 from app.schemas.entry import EntryCreate
 
 
-async def create_entry(session: AsyncSession, slug: str, payload: EntryCreate) -> Entry:
-    """Create an entry in a waitlist, auto-creating the waitlist if needed."""
-    # Find or auto-create waitlist
-    result = await session.execute(select(Waitlist).where(Waitlist.slug == slug))
-    wl = result.scalar_one_or_none()
+def _extract_email(data: dict) -> str | None:
+    email_raw = data.get("email") if isinstance(data, dict) else None
+    if email_raw and isinstance(email_raw, str):
+        cleaned = email_raw.strip().lower()
+        return cleaned or None
+    return None
 
+
+def _extract_referrer(data: dict) -> str | None:
+    referrer_raw = data.get("referrer") if isinstance(data, dict) else None
+    if referrer_raw and isinstance(referrer_raw, str):
+        cleaned = referrer_raw.strip()
+        return cleaned or None
+    return None
+
+
+async def create_entry(store, slug: str, payload: EntryCreate) -> EntryData:
+    # Look up including soft-deleted waitlists so a new entry POST reactivates
+    # an existing waitlist (same id) instead of silently creating a duplicate.
+    wl = await store.waitlists.get_by_slug(slug, include_inactive=True)
     if wl is None:
-        wl = Waitlist(
+        wl = await store.waitlists.create(
             slug=slug,
-            title=slug,  # use slug as default display title
+            title=slug,
             description=None,
-            is_active=True,
         )
-        session.add(wl)
-        await session.flush()  # get wl.id without full commit yet
     elif not wl.is_active:
-        wl.is_active = True
-        wl.deleted_at = None
+        wl = await store.waitlists.touch_active(slug)
 
-    # Extract email from payload data if present
-    email_raw = payload.data.get("email") if isinstance(payload.data, dict) else None
-    email = str(email_raw).strip().lower() if email_raw and isinstance(email_raw, str) else None
+    email = _extract_email(payload.data)
+    referrer = _extract_referrer(payload.data)
 
-    # Extract referrer from payload data if present
-    referrer_raw = payload.data.get("referrer") if isinstance(payload.data, dict) else None
-    referrer = str(referrer_raw).strip() if referrer_raw and isinstance(referrer_raw, str) else None
-
-    entry = Entry(
+    return await store.entries.create(
         waitlist_id=wl.id,
         data=payload.data,
         email=email,
         referrer=referrer,
     )
-    session.add(entry)
-    await session.commit()
-    await session.refresh(entry)
-    return entry
+
+
+async def get_waitlist_id(store, slug: str) -> int | None:
+    wl = await store.waitlists.get_by_slug(slug)
+    return wl.id if wl is not None else None
 
 
 async def list_entries(
-    session: AsyncSession,
+    store,
     slug: str,
     *,
     skip: int = 0,
     limit: int = 50,
-) -> tuple[list[Entry], int]:
-    """List entries for a waitlist with pagination. Returns (items, total)."""
-    result = await session.execute(select(Waitlist.id).where(Waitlist.slug == slug))
-    wl_id = result.scalar_one_or_none()
-    if wl_id is None:
-        return [], 0
-
-    count_q = select(func.count(Entry.id)).where(Entry.waitlist_id == wl_id)
-    total = (await session.execute(count_q)).scalar_one()
-
-    query = (
-        select(Entry)
-        .where(Entry.waitlist_id == wl_id)
-        .order_by(Entry.created_at.desc())
-        .offset(skip)
-    )
-    if limit > 0:
-        query = query.limit(limit)
-    result = await session.execute(query)
-    return list(result.scalars().all()), total
+) -> EntryPageData:
+    wl = await store.waitlists.get_by_slug(slug)
+    if wl is None:
+        return EntryPageData(items=[], total=0)
+    return await store.entries.list_by_waitlist(wl.id, skip=skip, limit=limit)

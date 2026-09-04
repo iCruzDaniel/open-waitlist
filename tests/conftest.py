@@ -1,21 +1,18 @@
-"""Test configuration — override settings and DB session for tests."""
+"""Test configuration — override settings and DB store for tests."""
 
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth.service import hash_password
-from app.database import get_session
+from app.dependencies import get_store, reset_store_for_tests
 from app.main import app
 from app.middleware.rate_limit import limiter
 from app.models import Admin, Base
+from app.repositories.sql.store import SQLStore
 from app.services.export import ExportJobManager
 
 _TEST_DB_URL = "sqlite+aiosqlite://"
@@ -41,7 +38,7 @@ def _disable_turnstile(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
-    """Create tables, seed admin, override DB, return test client."""
+    """Create tables, seed admin, override store, return test client."""
     engine = create_async_engine(_TEST_DB_URL, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -57,28 +54,32 @@ async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
         session.add(admin)
         await session.commit()
 
-    async def override_get_session() -> AsyncIterator[AsyncSession]:
-        async with factory() as session:
-            yield session
+    store = SQLStore(factory)
 
-    app.dependency_overrides[get_session] = override_get_session
+    reset_store_for_tests()
+
+    async def override_get_store() -> AsyncIterator[SQLStore]:
+        yield store
+
+    app.dependency_overrides[get_store] = override_get_store
 
     # Reset the global slowapi rate-limit storage so each test starts clean
     limiter.reset()
 
-    # Set up export manager with test session factory and temp export dir
+    # Set up export manager with test store and temp export dir
     export_dir = tmp_path / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     app.state.export_manager = ExportJobManager(
         export_dir=export_dir,
         ttl_minutes=60,
-        session_factory=factory,
+        store=store,
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
     app.dependency_overrides.clear()
+    reset_store_for_tests()
     await engine.dispose()
 
 

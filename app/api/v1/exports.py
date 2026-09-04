@@ -5,11 +5,12 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.router import require_admin
-from app.database import get_session
+from app.config import get_settings
+from app.dependencies import StoreDep
 from app.middleware.rate_limit import limiter
+from app.repositories.models import EntryData
 from app.schemas.entry import EntryRead, PaginatedEntries
 from app.services.entry import list_entries
 
@@ -19,8 +20,10 @@ router = APIRouter(
     dependencies=[Depends(require_admin)],
 )
 
+_RATE_LIMIT_ENTRIES = get_settings().rate_limit_entries
 
-def _entry_to_read(entry) -> EntryRead:
+
+def _entry_to_read(entry: EntryData) -> EntryRead:
     return EntryRead(
         id=entry.id,
         waitlist_id=entry.waitlist_id,
@@ -37,19 +40,19 @@ async def list_all(
     slug: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep = None,  # type: ignore[assignment]
 ) -> PaginatedEntries:
-    items, total = await list_entries(session, slug, skip=skip, limit=limit)
+    page = await list_entries(store, slug, skip=skip, limit=limit)
     return PaginatedEntries(
-        items=[_entry_to_read(e) for e in items],
-        total=total,
+        items=[_entry_to_read(e) for e in page.items],
+        total=page.total,
         skip=skip,
         limit=limit,
     )
 
 
 @router.post("/export")
-@limiter.limit("10/minute")
+@limiter.limit(_RATE_LIMIT_ENTRIES)
 async def trigger_export(
     request: Request,
     slug: str,

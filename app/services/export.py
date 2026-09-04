@@ -11,12 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
-
-from app.models.entry import Entry
-
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from app.repositories.protocols import Store
 
 
 @dataclass
@@ -40,11 +36,11 @@ class ExportJobManager:
         self,
         export_dir: Path,
         ttl_minutes: int,
-        session_factory: async_sessionmaker[AsyncSession],
+        store: Store,
     ) -> None:
         self.export_dir = export_dir
         self.ttl_minutes = ttl_minutes
-        self._session_factory = session_factory
+        self._store = store
         self._jobs: dict[str, ExportJob] = {}
 
     async def start_export(self, slug: str) -> ExportJob:
@@ -55,17 +51,13 @@ class ExportJobManager:
         await self._sweep()
 
         # Check waitlist exists and get its ID
-        async with self._session_factory() as session:
-            from app.models.waitlist import Waitlist
+        wl = await self._store.waitlists.get_by_slug(slug)
+        if wl is None:
+            raise LookupError("Waitlist not found")
 
-            result = await session.execute(select(Waitlist.id).where(Waitlist.slug == slug))
-            wl_id = result.scalar_one_or_none()
-            if wl_id is None:
-                raise LookupError("Waitlist not found")
-
-            # Count total entries
-            count_q = select(func.count(Entry.id)).where(Entry.waitlist_id == wl_id)
-            total = (await session.execute(count_q)).scalar_one()
+        # Count total entries
+        page = await self._store.entries.list_by_waitlist(wl.id, skip=0, limit=1)
+        total = page.total
 
         # Idempotency: return existing pending/processing job for same slug
         for job in self._jobs.values():
@@ -84,7 +76,7 @@ class ExportJobManager:
             file_path=None,
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            waitlist_id=wl_id,
+            waitlist_id=wl.id,
         )
         self._jobs[job.job_id] = job
         asyncio.create_task(self._run(job))
@@ -119,94 +111,60 @@ class ExportJobManager:
         wl_id = job.waitlist_id
 
         # Phase SCAN: collect union of keys across all entries' data dicts
-        async with self._session_factory() as session:
-            data_keys: list[str] = []
-            seen_keys: set[str] = set()
-            last_id = 0
+        data_keys = await self._store.entries.data_keys(wl_id, batch_size=batch_size)
 
-            while True:
-                result = await session.execute(
-                    select(Entry.id, Entry.data)
-                    .where(Entry.waitlist_id == wl_id, Entry.id > last_id)
-                    .order_by(Entry.id)
-                    .limit(batch_size)
-                )
-                rows = result.all()
-                if not rows:
-                    break
-                for _entry_id, data in rows:
-                    if isinstance(data, dict):
-                        for key in data:
-                            if key not in seen_keys:
-                                seen_keys.add(key)
-                                data_keys.append(key)
-                last_id = rows[-1][0]
+        # Update status to processing
+        async with job.condition:
+            job.status = "processing"
+            job.updated_at = datetime.now()
+            job.condition.notify_all()
 
-            # Update status to processing
-            async with job.condition:
-                job.status = "processing"
-                job.updated_at = datetime.now()
-                job.condition.notify_all()
+        # Phase WRITE: stream rows to CSV
+        tmp_path = self.export_dir / f"{job.job_id}.csv.tmp"
+        final_path = self.export_dir / f"{job.job_id}.csv"
 
-            # Phase WRITE: stream rows to CSV
-            tmp_path = self.export_dir / f"{job.job_id}.csv.tmp"
-            final_path = self.export_dir / f"{job.job_id}.csv"
+        # Sanitize header keys
+        sanitized_data_keys = [sanitize(key) for key in data_keys]
+        header = ["id", "email", "referrer", "created_at", *sanitized_data_keys]
 
-            # Sanitize header keys
-            sanitized_data_keys = [sanitize(key) for key in data_keys]
-            header = ["id", "email", "referrer", "created_at", *sanitized_data_keys]
+        with open(tmp_path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(header)
 
-            with open(tmp_path, "w", encoding="utf-8-sig", newline="") as f:
-                writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
-                writer.writerow(header)
+            if job.total == 0:
+                # Empty waitlist - header only
+                pass
+            else:
+                async for batch in self._store.entries.iterate_by_waitlist(
+                    wl_id, batch_size=batch_size
+                ):
+                    for entry in batch:
+                        row = [
+                            entry.id,
+                            sanitize(entry.email or ""),
+                            sanitize(entry.referrer or ""),
+                            entry.created_at.isoformat() if entry.created_at else "",
+                            *[sanitize(flatten(entry.data.get(k))) for k in data_keys],
+                        ]
+                        writer.writerow(row)
+                        job.processed += 1
 
-                if job.total == 0:
-                    # Empty waitlist - header only
-                    pass
-                else:
-                    last_id = 0
-                    while True:
-                        result = await session.execute(
-                            select(Entry)
-                            .where(Entry.waitlist_id == wl_id, Entry.id > last_id)
-                            .order_by(Entry.id)
-                            .limit(batch_size)
-                        )
-                        entries = result.scalars().all()
-                        if not entries:
-                            break
+                    # Update progress
+                    progress = 10 + round(90 * job.processed / job.total) if job.total > 0 else 100
+                    async with job.condition:
+                        job.progress = progress
+                        job.updated_at = datetime.now()
+                        job.condition.notify_all()
 
-                        for entry in entries:
-                            row = [
-                                entry.id,
-                                sanitize(entry.email or ""),
-                                sanitize(entry.referrer or ""),
-                                entry.created_at.isoformat() if entry.created_at else "",
-                                *[sanitize(flatten(entry.data.get(k))) for k in data_keys],
-                            ]
-                            writer.writerow(row)
-                            job.processed += 1
+        # Atomic replace
+        os.replace(tmp_path, final_path)
 
-                        # Update progress
-                        progress = (
-                            10 + round(90 * job.processed / job.total) if job.total > 0 else 100
-                        )
-                        async with job.condition:
-                            job.progress = progress
-                            job.updated_at = datetime.now()
-                            job.condition.notify_all()
-
-                        last_id = entries[-1].id
-
-            # Atomic replace
-            os.replace(tmp_path, final_path)
-
-            async with job.condition:
-                job.status = "done"
-                job.progress = 100
-                job.file_path = final_path
-                job.updated_at = datetime.now()
-                job.condition.notify_all()
+        async with job.condition:
+            job.status = "done"
+            job.progress = 100
+            job.file_path = final_path
+            job.updated_at = datetime.now()
+            job.condition.notify_all()
 
     async def _sweep(self) -> None:
         cutoff = datetime.now() - timedelta(minutes=self.ttl_minutes)

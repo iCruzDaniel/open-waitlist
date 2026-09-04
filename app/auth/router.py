@@ -2,28 +2,29 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_access_token, verify_access_token
 from app.auth.schemas import AdminRead, LoginRequest, TokenResponse
-from app.auth.service import authenticate_admin
-from app.database import get_session
+from app.auth.service import authenticate_admin, get_admin_by_id
+from app.config import get_settings
+from app.dependencies import StoreDep
 from app.middleware.rate_limit import limiter
-from app.models.admin import Admin
+from app.repositories.models import AdminData
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _security = HTTPBearer(auto_error=False)
 
+_RATE_LIMIT_LOGIN = get_settings().rate_limit_login
+
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("5/minute")
+@limiter.limit(_RATE_LIMIT_LOGIN)
 async def login(
     request: Request,  # noqa: ARG001  — used by slowapi limiter
     payload: LoginRequest,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    store: StoreDep,
 ) -> TokenResponse:
-    admin = await authenticate_admin(session, payload.email, payload.password)
+    admin = await authenticate_admin(store, payload.email, payload.password)
     if admin is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -35,8 +36,8 @@ async def login(
 
 async def require_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(_security),  # noqa: B008
-    session: AsyncSession = Depends(get_session),  # noqa: B008
-) -> Admin:
+    store: StoreDep = None,  # type: ignore[assignment]
+) -> AdminData:
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,8 +56,7 @@ async def require_admin(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         ) from None
-    result = await session.execute(select(Admin).where(Admin.id == admin_id))
-    admin = result.scalar_one_or_none()
+    admin = await get_admin_by_id(store, admin_id)
     if admin is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -67,6 +67,6 @@ async def require_admin(
 
 @router.get("/me", response_model=AdminRead)
 async def me(
-    admin: Admin = Depends(require_admin),  # noqa: B008
-) -> Admin:
+    admin: AdminData = Depends(require_admin),  # noqa: B008
+) -> AdminData:
     return admin
