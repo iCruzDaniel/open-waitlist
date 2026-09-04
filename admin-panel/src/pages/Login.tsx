@@ -1,14 +1,19 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../api/client'
 
 export default function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [searchParams] = useSearchParams()
+  const [email, setEmail] = useState(searchParams.get('email') ?? '')
+  const [password, setPassword] = useState(searchParams.get('pass') ?? '')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login, isLoggedIn } = useAuth()
   const navigate = useNavigate()
+
+  // True when the demo link pre-filled the credentials via query params,
+  // so the guest knows they only need to hit Sign in.
+  const preFilled = !!searchParams.get('email') && !!searchParams.get('pass')
 
   if (isLoggedIn) {
     navigate('/', { replace: true })
@@ -45,6 +50,14 @@ export default function Login() {
           {error && (
             <div className="rounded-md bg-red-50 p-4">
               <p className="text-sm font-medium text-red-800">{error}</p>
+            </div>
+          )}
+
+          {preFilled && !error && (
+            <div className="rounded-md bg-emerald-50 p-4">
+              <p className="text-sm font-medium text-emerald-800">
+                Demo credentials ready — just hit Sign in
+              </p>
             </div>
           )}
 

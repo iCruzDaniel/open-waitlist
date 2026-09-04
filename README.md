@@ -36,6 +36,15 @@ uv run uvicorn app.main:app --reload
 
 Abre **http://localhost:8000** → pulsa **🎲 Random → Join waitlist** un par de veces → entra en **http://localhost:8000/admin** y verás los leads que acabas de capturar. Listo. 🎉
 
+> 🔥 **¿En Vercel?** Pruébalo **en vivo** — sin instalar nada:
+>
+> | Demo | Link | Qué verás |
+> |------|------|-----------|
+> | **Formulario demo** | [open-waitlist-one.vercel.app](https://open-waitlist-one.vercel.app) | Captura de leads en `/` con botón 🎲 Random |
+> | **Panel admin** | [open-waitlist-one.vercel.app/admin](https://open-waitlist-one.vercel.app/admin?email=admin%40demo.com&pass=elAdmin123) | Login con credenciales **autorellenadas** 🪄 — solo pulsa **Sign in** y verás los leads capturados |
+>
+> **Credenciales de prueba:** `admin@demo.com` / `elAdmin123` (el link del panel ya viene pre-rellenado).
+
 > 🔥 **¿En Vercel?** OpenWaitlist corre sin servidor con Upstash Redis — sin disco, sin contenedor. Los pasos están en [Despliegue](#despliegue).
 
 ---
