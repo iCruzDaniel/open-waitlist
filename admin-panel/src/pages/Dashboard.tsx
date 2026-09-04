@@ -23,6 +23,11 @@ export default function Dashboard() {
   const { logout } = useAuth()
   const navigate = useNavigate()
 
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
   const load = async () => {
     setLoading(true)
     setError('')
@@ -115,7 +120,7 @@ export default function Dashboard() {
             Waitlist Admin
           </h1>
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
             Sign out

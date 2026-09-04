@@ -1,4 +1,11 @@
-import { useState, useCallback } from 'react'
+import {
+  createContext,
+  createElement,
+  useContext,
+  useState,
+  useCallback,
+  type ReactNode,
+} from 'react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +56,21 @@ function clearAuth() {
 }
 
 export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider')
+  return ctx
+}
+
+interface AuthContextValue {
+  token: string | null
+  login: (email: string, password: string) => Promise<void>
+  logout: () => void
+  isLoggedIn: boolean
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(getStoredToken)
 
   const login = useCallback(async (email: string, password: string) => {
@@ -73,7 +95,14 @@ export function useAuth() {
     setToken(null)
   }, [])
 
-  return { token, login, logout, isLoggedIn: !!token }
+  const value: AuthContextValue = {
+    token,
+    login,
+    logout,
+    isLoggedIn: !!token,
+  }
+
+  return createElement(AuthContext.Provider, { value }, children)
 }
 
 // ─── API Client ─────────────────────────────────────────────────────────────

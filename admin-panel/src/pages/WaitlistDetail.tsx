@@ -5,12 +5,15 @@ import {
   startExport,
   streamExportStatus,
   downloadExport,
+  useAuth,
 } from '../api/client'
 import type { Entry } from '../api/client'
+import EntryDataTable from '../components/EntryDataTable'
 
 export default function WaitlistDetail() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
+  const { logout } = useAuth()
   const [entries, setEntries] = useState<Entry[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -19,6 +22,11 @@ export default function WaitlistDetail() {
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<number | null>(null)
   const [exportError, setExportError] = useState('')
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   const load = async () => {
     if (!slug) return
@@ -71,15 +79,6 @@ export default function WaitlistDetail() {
     }
   }
 
-  const formatDate = (s: string) =>
-    new Date(s).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -112,37 +111,45 @@ export default function WaitlistDetail() {
             </div>
           </div>
 
-          <button
-            onClick={handleDownload}
-            disabled={exporting || downloading || loading || entries.length === 0}
-            className="inline-flex items-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {exporting && exportProgress !== null ? (
-              <>
-                <div className="h-2 w-40 bg-gray-200 rounded-full overflow-hidden mr-2">
-                  <div
-                    className="bg-indigo-600 h-full transition-all"
-                    style={{ width: `${exportProgress}%` }}
-                  />
-                </div>
-                {downloading
-                  ? 'Downloading…'
-                  : `Exporting… ${Math.round(exportProgress)}%`}
-              </>
-            ) : (
-              <>
-                <svg
-                  className="-ml-0.5 mr-1.5 h-4 w-4"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
-                  <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
-                </svg>
-                {downloading ? 'Downloading…' : 'Export CSV'}
-              </>
-            )}
-          </button>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handleDownload}
+              disabled={exporting || downloading || loading || entries.length === 0}
+              className="inline-flex items-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exporting && exportProgress !== null ? (
+                <>
+                  <div className="h-2 w-40 bg-gray-200 rounded-full overflow-hidden mr-2">
+                    <div
+                      className="bg-indigo-600 h-full transition-all"
+                      style={{ width: `${exportProgress}%` }}
+                    />
+                  </div>
+                  {downloading
+                    ? 'Downloading…'
+                    : `Exporting… ${Math.round(exportProgress)}%`}
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="-ml-0.5 mr-1.5 h-4 w-4"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                    <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                  </svg>
+                  {downloading ? 'Downloading…' : 'Export CSV'}
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -203,61 +210,7 @@ export default function WaitlistDetail() {
 
         {/* Table */}
         {!loading && !error && entries.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Referrer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Data
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created At
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-500 font-mono">
-                        {entry.id}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {(entry.data.email as string) || (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {entry.referrer || (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 font-mono">
-                        <div
-                          className="max-w-xs truncate"
-                          title={JSON.stringify(entry.data, null, 2)}
-                        >
-                          {JSON.stringify(entry.data)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {formatDate(entry.created_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <EntryDataTable entries={entries} />
         )}
       </main>
     </div>
